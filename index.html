@@ -43,29 +43,40 @@ html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 52px)}
 body{background:var(--bg)}
 .stage{position:relative;z-index:1}
 .device{position:relative}
-.screen{position:relative;max-width:1520px;margin:0 auto;min-height:100%}
+.screen{position:relative;max-width:1280px;margin:0 auto;min-height:100%}
 body{overflow-x:hidden}
 .topbar{margin:0 calc(50% - 50vw)}
-.nav{max-width:1520px;margin:0 auto}
+.nav{max-width:1280px;margin:0 auto}
 @media (min-width:800px){.large{padding-top:8px}}
-@media (min-width:1000px){.large{padding-left:24px;padding-right:24px}}
-/* Две колонки на широком экране: слева ввод, справа результат */
+/* Широкий экран: по центру, на всю высоту; слева ввод, справа результат со своей прокруткой */
 .cols{display:block}
 @media (min-width:1000px){
-  .cols{display:grid;grid-template-columns:minmax(340px,420px) minmax(0,1fr);gap:8px;align-items:start;padding:0 8px}
-  .side{position:sticky;top:52px;max-height:calc(100vh - 60px);overflow:auto;padding-bottom:16px;scrollbar-width:thin}
-  .side textarea{min-height:calc(100vh - 420px);max-height:none}
-  #out{padding-bottom:40px}
+  .screen{display:flex;flex-direction:column;height:100vh;min-height:620px}
+  .nav{padding:0 16px}
+  .large{text-align:center;padding:0 24px}
+  .cols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,440px) minmax(0,1fr);gap:24px;padding:0 24px 24px}
+  .cols .group,.cols .hero,.cols .seg,.cols .search,.cols .json{margin-left:0;margin-right:0}
+  .cols .btn-fill{width:100%;margin-left:0;margin-right:0}
+  .cols .sec-h,.cols .sec-f{margin-left:16px;margin-right:16px}
+  .side{display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:thin}
+  #dropzone{flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
+  .side textarea{flex:1 1 auto;min-height:0;max-height:none;resize:none}
+  #out{min-height:0;overflow:auto;scrollbar-width:thin;padding-bottom:8px}
   #out>.sec-h:first-child,#out>.hero:first-child{margin-top:24px}
+  .empty{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
+  .cols .empty>*{width:100%;max-width:560px;margin-left:auto;margin-right:auto}
+  .cols .empty>.sec-h{padding:0 16px}
+  .empty .ttl{font:600 22px/1.25 var(--sans);text-align:center;margin-bottom:4px}
+  .empty .sub{color:var(--sec);font-size:15px;text-align:center;margin-bottom:8px}
   .cols .hero dl{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .pad-end{display:none}
 }
+.empty .ttl,.empty .sub{display:none}
+@media (min-width:1000px){.empty .ttl,.empty .sub{display:block}}
 @media (min-width:1280px){
-  .signer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 0;align-items:start}
+  .signer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 16px;align-items:start}
   .signer .sg-a,.signer .sg-b{min-width:0}
   .signer .sg-b>.sec-h:first-child{margin-top:0}
-  .signer .sg-b>.group:first-child{margin-left:0}
-  .signer .sg-a>.group{margin-right:8px}
-  .signer .sg-b>.group{margin-left:8px}
 }
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8)}
@@ -231,12 +242,16 @@ body.still .blob{animation-play-state:paused}
    <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
    </div>
    <div id="out">
+    <div class="empty">
+     <div class="ttl">Здесь появится расшифровка</div>
+     <div class="sub">Подписант, сертификат и документ</div>
      <div class="sec-h">Где взять подпись</div>
      <div class="group">
        <div class="cell ico multi"><span class="sq gray num">1</span><span class="lbl">DevTools → вкладка Network, нажмите «Подписать»</span></div>
        <div class="cell ico multi"><span class="sq gray num">2</span><span class="lbl">Выберите запрос sign → вкладка Payload</span></div>
-       <div class="cell ico multi"><span class="sq gray num">3</span><span class="lbl">Скопируйте подпись и вставьте выше</span></div>
+       <div class="cell ico multi"><span class="sq gray num">3</span><span class="lbl">Скопируйте подпись и вставьте в поле</span></div>
      </div>
+    </div>
    </div>
 
    </div>
@@ -853,7 +868,7 @@ function showError(msg, hint) {
 }
 
 function render(r) {
-  current = r; query = ''; const out = $('out'); out.textContent = '';
+  current = r; query = ''; const out = $('out'); out.textContent = ''; out.scrollTop = 0;
   if (r.json != null || r.text != null) out.append(renderHero(r.json));
   if (r.kind !== 'cms' || r.detached) {
     const g = group(); g.style.marginTop = '16px';
