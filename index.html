@@ -43,11 +43,30 @@ html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 52px)}
 body{background:var(--bg)}
 .stage{position:relative;z-index:1}
 .device{position:relative}
-.screen{position:relative;max-width:760px;margin:0 auto;min-height:100%}
+.screen{position:relative;max-width:1520px;margin:0 auto;min-height:100%}
 body{overflow-x:hidden}
 .topbar{margin:0 calc(50% - 50vw)}
-.nav{max-width:760px;margin:0 auto}
-@media (min-width:800px){.large{padding-top:24px}.large h1{font-size:40px}}
+.nav{max-width:1520px;margin:0 auto}
+@media (min-width:800px){.large{padding-top:8px}}
+@media (min-width:1000px){.large{padding-left:24px;padding-right:24px}}
+/* Две колонки на широком экране: слева ввод, справа результат */
+.cols{display:block}
+@media (min-width:1000px){
+  .cols{display:grid;grid-template-columns:minmax(340px,420px) minmax(0,1fr);gap:8px;align-items:start;padding:0 8px}
+  .side{position:sticky;top:52px;max-height:calc(100vh - 60px);overflow:auto;padding-bottom:16px;scrollbar-width:thin}
+  .side textarea{min-height:calc(100vh - 420px);max-height:none}
+  #out{padding-bottom:40px}
+  #out>.sec-h:first-child,#out>.hero:first-child{margin-top:24px}
+  .cols .hero dl{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media (min-width:1280px){
+  .signer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 0;align-items:start}
+  .signer .sg-a,.signer .sg-b{min-width:0}
+  .signer .sg-b>.sec-h:first-child{margin-top:0}
+  .signer .sg-b>.group:first-child{margin-left:0}
+  .signer .sg-a>.group{margin-right:8px}
+  .signer .sg-b>.group{margin-left:8px}
+}
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8)}
 
@@ -190,6 +209,8 @@ body.still .blob{animation-play-state:paused}
      <p>Вставьте подпись — покажем, кто подписал и что внутри документа</p>
    </div>
 
+   <div class="cols">
+   <div class="side">
    <div class="sec-h">Base64 из Payload запроса sign</div>
    <div class="group" id="dropzone">
      <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
@@ -203,6 +224,12 @@ body.still .blob{animation-play-state:paused}
    <button class="btn-fill" id="go">Расшифровать</button>
    <p class="sec-f">Можно с кавычками или целым JSON запроса. Расшифровка идёт на устройстве, данные никуда не отправляются.</p>
 
+   <div class="sec-h">Оформление</div>
+   <div class="group">
+     <div class="cell"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
+   </div>
+   <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
+   </div>
    <div id="out">
      <div class="sec-h">Где взять подпись</div>
      <div class="group">
@@ -212,11 +239,7 @@ body.still .blob{animation-play-state:paused}
      </div>
    </div>
 
-   <div class="sec-h">Оформление</div>
-   <div class="group">
-     <div class="cell"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
    </div>
-   <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
    <div class="pad-end"></div>
   </div>
  </div>
@@ -737,25 +760,26 @@ function renderHero(json) {
 function renderSigner(s, doc, idx) {
   const c = s.cert || {};
   const wrap = el('div', 'signer appear'); wrap.style.animationDelay = (idx * .08) + 's';
+  const A = el('div', 'sg-a'), B = el('div', 'sg-b');
   const g = group();
   const ct = el('div', 'contact');
   ct.append(el('div', 'ava', initials(c.cn)), el('div', 'nm', c.cn || 'Подписант не определён'), el('div', 'rl', [c.title, c.org].filter(Boolean).join(', ') || 'Должность не указана'));
-  g.append(ct);
-  wrap.append(g);
-  wrap.append(secH('Данные'));
+  g.append(ct); A.append(g);
+  const checks = signerChecks(s, doc);
+  if (checks.length) {
+    A.append(secH('Проверки'));
+    const g3 = group(); checks.forEach(([t, msg]) => g3.append(iconRow(t, t, msg))); A.append(g3);
+  }
+  B.append(secH('Данные'));
   const g2 = group();
   [['ИНН', c.tin, true], ['ПИНФЛ', c.pinfl, true], ['Подписано', fmtDate(s.tsa && s.tsa.time || s.signingTime)],
    ['Метка времени', s.tsa && s.tsa.time ? (s.tsa.name || 'есть') : 'нет'],
    ['Сертификат', c.notBefore ? fmtDay(c.notBefore) + ' — ' + fmtDay(c.notAfter) : ''],
    ['Серийный №', c.serial || s.serial, true], ['Выдан', c.issuer ? c.issuer.get('2.5.4.3') : ''], ['Алгоритм', s.sigAlg]
   ].forEach(([l, v, m]) => { if (v) g2.append(row(l, v, m)); });
-  wrap.append(g2);
-  const checks = signerChecks(s, doc);
-  if (checks.length) {
-    wrap.append(secH('Проверки'));
-    const g3 = group(); checks.forEach(([t, msg]) => g3.append(iconRow(t, t, msg))); wrap.append(g3);
-  }
-  wrap.append(el('p', 'sec-f', 'Время — по Ташкенту.'));
+  B.append(g2);
+  B.append(el('p', 'sec-f', 'Время — по Ташкенту.'));
+  wrap.append(A, B);
   return wrap;
 }
 
@@ -883,7 +907,7 @@ function render(r) {
   } else panels.forEach(p => out.append(p));
   drawJson();
   if (window.bgBurst) window.bgBurst();
-  const hero = out.firstElementChild; if (hero) hero.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  const hero = out.firstElementChild; if (hero && !matchMedia('(min-width:1000px)').matches) hero.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   toast(r.kind === 'cms' ? 'Подпись расшифрована' : 'Содержимое расшифровано');
 }
 
