@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Расшифровка подписи E-IMZO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2F2F7; --cell:#FFFFFF; --label:#000000; --sec:#6C6C70; --ter:#AEAEB2; --sep:rgba(60,60,67,.29); --fill:rgba(118,118,128,.12);
+  --thumb:#FFFFFF; --tint:#FF3B30; --tint-strong:#D70015; --green:#34C759; --orange:#FF9500; --gray:#8E8E93;
+  --j-key:#3A3A3C; --j-str:#248A3D; --j-num:#D70015; --j-null:#8E8E93; --mark:#FFD6D3; --mark-ink:#000;
+  --cv-red:#FF3B30; --cv-gray:#8E8E93; --cv-ink:#000000; --page:#1C1C1E;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Inter","Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#000000; --cell:#1C1C1E; --label:#FFFFFF; --sec:#98989F; --ter:#5A5A5E; --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24);
+    --thumb:#636366; --tint:#FF453A; --tint-strong:#FF453A; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
+    --j-key:#E5E5EA; --j-str:#30D158; --j-num:#FF6961; --j-null:#8E8E93; --mark:#7A1C17; --mark-ink:#FFF;
+    --cv-red:#FF453A; --cv-ink:#FFFFFF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#000000; --cell:#1C1C1E; --label:#FFFFFF; --sec:#98989F; --ter:#5A5A5E; --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24);
+  --thumb:#636366; --tint:#FF453A; --tint-strong:#FF453A; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
+  --j-key:#E5E5EA; --j-str:#30D158; --j-num:#FF6961; --j-null:#8E8E93; --mark:#7A1C17; --mark-ink:#FFF;
+  --cv-red:#FF453A; --cv-ink:#FFFFFF;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:400 17px/1.35 var(--sans);color:var(--label);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+
+/* ===== Режим «телефон»: на мобильном — на весь экран ===== */
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 52px)}
+body{background:var(--bg)}
+.stage{position:relative;z-index:1}
+.device{position:relative}
+.screen{position:relative;max-width:760px;margin:0 auto;min-height:100%}
+body{overflow-x:hidden}
+.topbar{margin:0 calc(50% - 50vw)}
+.nav{max-width:760px;margin:0 auto}
+@media (min-width:800px){.large{padding-top:24px}.large h1{font-size:40px}}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8)}
+
+/* ===== Dynamic Island / уведомление ===== */
+.island{position:fixed;z-index:50;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);box-shadow:0 10px 30px -10px rgba(0,0,0,.45);transform:translateX(-50%);min-width:126px;height:37px;border-radius:20px;background:#000;color:#fff;
+  display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;font:600 14px/1 var(--sans);opacity:0;pointer-events:none;
+  transition:min-width .35s cubic-bezier(.3,1.4,.5,1),height .35s cubic-bezier(.3,1.4,.5,1),opacity .2s}
+.island span{opacity:0;white-space:nowrap;transition:opacity .2s}
+.island.wide{min-width:250px;height:44px;opacity:1}
+.island.wide span{opacity:1;transition-delay:.12s}
+.island .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
+
+/* ===== Навбар ===== */
+.topbar{background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);border-bottom:.5px solid transparent;transition:border-color .2s}
+.topbar.solid{border-bottom-color:var(--sep)}
+.nav{height:44px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 8px}
+.nav .t{font-weight:600;opacity:0;transition:opacity .2s}
+.topbar.solid .nav .t{opacity:1}
+.nav .r{justify-self:end}
+.link{border:0;background:none;color:var(--tint-strong);font:400 17px/1 var(--sans);padding:0 8px;min-height:44px;cursor:pointer;border-radius:8px}
+.link:hover{opacity:.7}
+.link:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,.cell:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+
+.large{padding:2px 16px 0}
+.large h1{font:700 34px/1.2 var(--sans);letter-spacing:.01em;margin:0}
+.large p{margin:4px 0 0;color:var(--sec);font-size:15px}
+
+/* ===== Сгруппированные списки ===== */
+.sec-h{font-size:13px;color:var(--sec);margin:24px 32px 7px}
+.sec-f{font-size:13px;color:var(--sec);margin:8px 32px 0;line-height:1.4}
+.group{background:var(--cell);border-radius:12px;margin:0 16px;overflow:hidden}
+.cell{display:flex;align-items:center;gap:12px;min-height:44px;padding:11px 16px;position:relative;font-size:17px}
+.cell+.cell::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--sep)}
+.cell.ico+.cell::before,.cell.ico+.cell.ico::before{left:57px}
+.cell .lbl{flex:1 1 auto;min-width:0}
+.cell .val{color:var(--sec);text-align:right;overflow-wrap:anywhere;max-width:62%}
+.cell .val.mono{font:13px/1.35 var(--mono)}
+.cell.tap{cursor:pointer}
+.cell.tap:active{background:var(--fill)}
+.chev{color:var(--ter);flex:none}
+.sq{width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:#fff;flex:none}
+.sq svg{width:17px;height:17px}
+.sq.green{background:var(--green)} .sq.orange{background:var(--orange)} .sq.red{background:var(--tint)} .sq.gray{background:var(--gray)}
+.sq.num{font:600 15px/1 var(--sans)}
+.multi{flex-direction:row;align-items:flex-start}
+.multi .lbl{font-size:15px;line-height:1.35;padding-top:5px}
+textarea{display:block;width:100%;min-height:150px;max-height:40vh;resize:vertical;border:0;background:transparent;color:var(--label);padding:12px 16px;font:12px/1.5 var(--mono);word-break:break-all}
+textarea::placeholder{color:var(--ter)}
+.drop-over{box-shadow:0 0 0 2px var(--tint)}
+.btn-fill{display:block;width:calc(100% - 32px);margin:16px 16px 0;height:50px;border:0;border-radius:14px;background:var(--tint-strong);color:#fff;font:600 17px/1 var(--sans);cursor:pointer;transition:opacity .2s}
+.btn-fill:active{opacity:.75}
+.btn-fill.busy{opacity:.6}
+
+/* Карточка документа */
+.hero{margin:16px 16px 0;padding:18px 18px 16px;border-radius:16px;background:var(--cell);display:grid;gap:12px}
+.hero .kind{display:flex;align-items:center;gap:12px}
+.hero .kind b{font:700 22px/1.2 var(--sans)}
+.hero .badge{width:44px;height:44px;border-radius:11px;background:var(--tint);color:#fff;display:grid;place-items:center;flex:none}
+.hero dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin:0}
+.hero dt{font-size:13px;color:var(--sec)}
+.hero dd{margin:2px 0 0;font-weight:600;font-size:16px;overflow-wrap:anywhere}
+
+/* Сегментированный переключатель */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--fill);border-radius:9px;padding:2px;margin:20px 16px 0;position:relative}
+.seg button{position:relative;z-index:1;border:0;background:transparent;color:var(--label);font:600 13px/1 var(--sans);min-height:32px;border-radius:7px;cursor:pointer}
+.seg .thumb{position:absolute;z-index:0;top:2px;bottom:2px;left:2px;border-radius:7px;background:var(--thumb);box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);transition:transform .3s cubic-bezier(.3,1.2,.5,1)}
+[role=tabpanel][hidden]{display:none}
+
+/* Контакт-заголовок подписанта */
+.contact{display:grid;justify-items:center;text-align:center;padding:22px 16px 18px;gap:4px}
+.ava{width:76px;height:76px;border-radius:50%;background:linear-gradient(180deg,#A5A5AA,#86868B);color:#fff;font:600 30px/1 var(--sans);display:grid;place-items:center;margin-bottom:8px}
+.contact .nm{font:600 22px/1.25 var(--sans);overflow-wrap:anywhere}
+.contact .rl{color:var(--sec);font-size:15px}
+.signer + .signer{margin-top:8px}
+.appear{animation:appear .35s ease-out both}
+@keyframes appear{from{opacity:0;transform:translateY(10px)}}
+
+/* JSON */
+.search{display:flex;align-items:center;gap:6px;background:var(--fill);border-radius:10px;height:36px;padding:0 8px;margin:16px 16px 0;color:var(--sec)}
+.search input{flex:1;min-width:0;border:0;background:transparent;color:var(--label);font:17px var(--sans);height:100%}
+.search input::placeholder{color:var(--sec)}
+.search input:focus-visible{outline:none}
+.search:focus-within{box-shadow:0 0 0 2px var(--tint)}
+.jbar{display:flex;flex-wrap:wrap;gap:0 2px;align-items:center;margin:6px 8px 4px}
+.jbar .link{font-size:15px;padding:0 6px}
+.hero,.seg,.signer,.search{scroll-margin-top:60px}
+.jbar .count{margin-left:auto;margin-right:8px;font-size:13px;color:var(--sec)}
+.mini{display:inline-grid;grid-auto-flow:column;background:var(--fill);border-radius:8px;padding:2px;margin:0 8px}
+.mini button{border:0;background:transparent;color:var(--label);font:600 13px/1 var(--sans);min-height:30px;padding:0 12px;border-radius:6px;cursor:pointer}
+.mini button[aria-pressed="true"]{background:var(--thumb);box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.json{padding:12px 8px 12px 12px;overflow-x:auto;font:12px/1.6 var(--mono);background:var(--cell);border-radius:12px;margin:0 16px}
+.json .kids{margin-left:14px;border-left:1px solid var(--sep);padding-left:8px}
+.json summary{cursor:pointer;list-style:none;white-space:nowrap;border-radius:5px}
+.json summary::-webkit-details-marker{display:none}
+.json summary::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 2px 2px;border-right:1.5px solid var(--tint);border-bottom:1.5px solid var(--tint);transform:rotate(-45deg);transition:transform .2s}
+.json details[open]>summary::before{transform:rotate(45deg)}
+.json .leaf{padding-left:14px;white-space:pre-wrap;word-break:break-word}
+.k{color:var(--j-key)} .s{color:var(--j-str)} .n{color:var(--j-num)} .b,.z{color:var(--j-null)}
+.meta{color:var(--sec);font:11px var(--sans);margin-left:6px}
+mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 1px}
+pre.raw{margin:0;white-space:pre-wrap;word-break:break-word}
+
+/* Переключатель iOS */
+.switch{position:relative;width:51px;height:31px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch i{position:absolute;inset:0;border-radius:16px;background:var(--fill);transition:background .2s}
+.switch i::after{content:"";position:absolute;left:2px;top:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .25s cubic-bezier(.3,1.3,.5,1)}
+.switch input:checked+i{background:var(--green)}
+.switch input:checked+i::after{transform:translateX(20px)}
+.switch input:focus-visible+i{outline:2px solid var(--tint);outline-offset:2px}
+
+.pad-end{height:48px}
+/* Фон */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(80px)}
+.blob.b1{width:46vmax;height:46vmax;left:-14vmax;top:-16vmax;background:color-mix(in srgb,var(--tint) 16%,transparent);animation:drift1 26s ease-in-out infinite alternate}
+.blob.b2{width:40vmax;height:40vmax;right:-12vmax;bottom:-14vmax;background:color-mix(in srgb,var(--gray) 14%,transparent);animation:drift2 30s ease-in-out infinite alternate}
+@keyframes drift1{to{transform:translate(16vw,12vh) scale(1.12)}}
+@keyframes drift2{to{transform:translate(-18vw,-10vh) scale(.92)}}
+canvas#bg{position:absolute;inset:0;width:100%;height:100%;opacity:.7}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+body.still .blob{animation-play-state:paused}
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><canvas id="bg"></canvas></div>
+<div class="stage">
+ <div class="device">
+  <div class="island" id="toast" role="status" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="toastText"></span></div>
+  <div class="screen" id="screen">
+   <div class="topbar" id="topbar">
+    <div class="nav">
+      <span></span>
+      <span class="t">Подпись</span>
+      <button class="link r" id="clear">Очистить</button>
+    </div>
+   </div>
+   <div class="large" id="large">
+     <h1>Подпись</h1>
+     <p>Вставьте подпись — покажем, кто подписал и что внутри документа</p>
+   </div>
+
+   <div class="sec-h">Base64 из Payload запроса sign</div>
+   <div class="group" id="dropzone">
+     <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
+     <label class="cell tap ico" for="file" style="border-top:.5px solid var(--sep)">
+       <span class="sq gray" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+       <span class="lbl">Открыть файл .p7s или .txt</span>
+       <svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+     </label>
+     <input type="file" id="file" hidden>
+   </div>
+   <button class="btn-fill" id="go">Расшифровать</button>
+   <p class="sec-f">Можно с кавычками или целым JSON запроса. Расшифровка идёт на устройстве, данные никуда не отправляются.</p>
+
+   <div id="out">
+     <div class="sec-h">Где взять подпись</div>
+     <div class="group">
+       <div class="cell ico multi"><span class="sq gray num">1</span><span class="lbl">DevTools → вкладка Network, нажмите «Подписать»</span></div>
+       <div class="cell ico multi"><span class="sq gray num">2</span><span class="lbl">Выберите запрос sign → вкладка Payload</span></div>
+       <div class="cell ico multi"><span class="sq gray num">3</span><span class="lbl">Скопируйте подпись и вставьте выше</span></div>
+     </div>
+   </div>
+
+   <div class="sec-h">Оформление</div>
+   <div class="group">
+     <div class="cell"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
+   </div>
+   <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
+   <div class="pad-end"></div>
+  </div>
+ </div>
+</div>
+<script>
+/* ===== Фон: сеть узлов с бегущими пакетами, символы base64, росчерки ===== */
+(function () {
+  const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let W = 0, H = 0, nodes = [], packets = [], glyphs = [], sigs = [], ripples = [];
+  let mx = 0, my = 0, tx = 0, ty = 0, px = -999, py = -999;
+  let raf = 0, last = performance.now(), nextSig = 1200, nextPkt = 0, burst = 0, paused = false;
+  let C = {};
+  const LINK = 150;
+  function colors() {
+    const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink') };
+  }
+  function mkGlyph(any) {
+    return { x: Math.random() * W, y: any ? Math.random() * H : H + 20, v: 10 + Math.random() * 22, ch: CH[Math.random() * CH.length | 0], sz: 9 + Math.random() * 7, z: .3 + Math.random() * .7, sw: Math.random() * 6.28 };
+  }
+  function resize() {
+    colors();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.min(Math.round(W * H / 16000), 110);
+    nodes = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14, r: 1.2 + Math.random() * 1.8, hot: 0 }));
+    glyphs = Array.from({ length: Math.min(Math.round(W * H / 14000), 140) }, () => mkGlyph(true));
+    packets = [];
+    if (reduce.matches || paused) draw(performance.now());
+  }
+  function newSig(now) {
+    const x0 = W * (.08 + Math.random() * .55), y0 = H * (.15 + Math.random() * .7), w = 160 + Math.random() * 200;
+    const ctrl = []; let x = x0;
+    for (let i = 0; i < 10; i++) { ctrl.push([x, y0 + (Math.random() - .5) * 70]); x += w / 9 + (Math.random() - .5) * 18; }
+    ctrl.push([x0 + w * .3, y0 + 26]); ctrl.push([x0 + w * 1.05, y0 + 14]);
+    const pts = [];
+    for (let i = 0; i < ctrl.length - 1; i++) {
+      const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+      for (let t = 0; t < 1; t += .06) {
+        const t2 = t * t, t3 = t2 * t;
+        pts.push([.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+                  .5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+      }
+    }
+    return { pts, t0: now };
+  }
+  function neighbours(i) {
+    const a = nodes[i], out = [];
+    for (let j = 0; j < nodes.length; j++) if (j !== i) { const b = nodes[j], dx = a.x - b.x, dy = a.y - b.y; if (dx * dx + dy * dy < LINK * LINK) out.push(j); }
+    return out;
+  }
+  function spawnPacket() {
+    if (!nodes.length) return;
+    const i = Math.random() * nodes.length | 0, nb = neighbours(i);
+    if (nb.length) packets.push({ a: i, b: nb[Math.random() * nb.length | 0], t: 0, hops: 2 + (Math.random() * 4 | 0) });
+  }
+  function draw(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    mx += (tx - mx) * .05; my += (ty - my) * .05;
+    ctx.clearRect(0, 0, W, H);
+    const ox = mx * 18, oy = my * 18;
+
+    // узлы и связи
+    nodes.forEach(n => {
+      n.x += n.vx * dt; n.y += n.vy * dt;
+      if (n.x < -20) n.x = W + 20; if (n.x > W + 20) n.x = -20;
+      if (n.y < -20) n.y = H + 20; if (n.y > H + 20) n.y = -20;
+      const dx = n.x - px, dy = n.y - py, d2 = dx * dx + dy * dy;
+      if (d2 < 14000) { const f = (1 - d2 / 14000) * 40 * dt; n.x += dx * f / 60; n.y += dy * f / 60; }
+      n.hot = Math.max(0, n.hot - dt * 1.4);
+    });
+    ctx.lineWidth = 1; ctx.strokeStyle = C.gray;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 < LINK * LINK) { ctx.globalAlpha = (1 - Math.sqrt(d2) / LINK) * .28; ctx.beginPath(); ctx.moveTo(a.x + ox, a.y + oy); ctx.lineTo(b.x + ox, b.y + oy); ctx.stroke(); }
+      }
+    }
+    nodes.forEach(n => {
+      ctx.globalAlpha = .45 + n.hot * .55; ctx.fillStyle = n.hot > .05 ? C.red : C.gray;
+      ctx.beginPath(); ctx.arc(n.x + ox, n.y + oy, n.r + n.hot * 2.5, 0, 6.2832); ctx.fill();
+    });
+
+    // пакеты данных бегут по связям
+    if (now > nextPkt) { spawnPacket(); nextPkt = now + (burst > .2 ? 40 : 260 + Math.random() * 400); }
+    packets = packets.filter(p => {
+      const a = nodes[p.a], b = nodes[p.b]; if (!a || !b) return false;
+      p.t += dt * 1.6;
+      if (p.t >= 1) {
+        b.hot = 1; p.hops--;
+        if (p.hops <= 0) { ripples.push({ x: b.x, y: b.y, t: 0 }); return false; }
+        const nb = neighbours(p.b).filter(j => j !== p.a); if (!nb.length) return false;
+        p.a = p.b; p.b = nb[Math.random() * nb.length | 0]; p.t = 0; return true;
+      }
+      const x = a.x + (b.x - a.x) * p.t + ox, y = a.y + (b.y - a.y) * p.t + oy;
+      ctx.globalAlpha = .9; ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = .25; ctx.strokeStyle = C.red; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(a.x + (b.x - a.x) * Math.max(0, p.t - .25) + ox, a.y + (b.y - a.y) * Math.max(0, p.t - .25) + oy); ctx.lineTo(x, y); ctx.stroke();
+      return true;
+    });
+    // круги от доставленных пакетов
+    ripples = ripples.filter(r => {
+      r.t += dt; if (r.t > 1.2) return false;
+      ctx.globalAlpha = .45 * (1 - r.t / 1.2); ctx.strokeStyle = C.red; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(r.x + ox, r.y + oy, 4 + r.t * 34, 0, 6.2832); ctx.stroke(); return true;
+    });
+
+    // росчерки подписи
+    if (now > nextSig && sigs.length < 2) { sigs.push(newSig(now)); nextSig = now + 4000 + Math.random() * 4000; }
+    sigs = sigs.filter(s => {
+      const age = (now - s.t0) / 1000, prog = Math.min(1, age / 2.2), fade = age > 3 ? Math.max(0, 1 - (age - 3) / 1.4) : 1;
+      if (fade <= 0) return false;
+      const n = Math.max(2, Math.floor(s.pts.length * prog));
+      ctx.strokeStyle = C.ink; ctx.globalAlpha = .3 * fade; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(s.pts[0][0], s.pts[0][1]);
+      for (let i = 1; i < n; i++) ctx.lineTo(s.pts[i][0], s.pts[i][1]);
+      ctx.stroke();
+      if (prog < 1) { const p = s.pts[n - 1]; ctx.globalAlpha = .85 * fade; ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 6.2832); ctx.fill(); }
+      return true;
+    });
+
+    // символы base64
+    const boost = 1 + burst * 7; burst = Math.max(0, burst - dt * .9);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    glyphs.forEach(p => {
+      p.y -= p.v * p.z * dt * boost; p.sw += dt * .8;
+      if (p.y < -20) Object.assign(p, mkGlyph(false));
+      if (Math.random() < .006) p.ch = CH[Math.random() * CH.length | 0];
+      ctx.fillStyle = burst > .15 && p.z > .7 ? C.red : C.gray;
+      ctx.globalAlpha = Math.min(.5, (.08 + .3 * p.z) * Math.min(1, p.y / H * 1.4) + burst * .3);
+      ctx.font = (p.sz * p.z + 6 | 0) + 'px "JetBrains Mono", monospace';
+      ctx.fillText(p.ch, p.x + Math.sin(p.sw) * 10 + mx * 12 * p.z, p.y);
+    });
+    ctx.globalAlpha = 1;
+  }
+  function loop(now) { draw(now); raf = requestAnimationFrame(loop); }
+  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || document.hidden) { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
+  addEventListener('resize', resize);
+  addEventListener('pointermove', e => { tx = e.clientX / W - .5; ty = e.clientY / H - .5; px = e.clientX; py = e.clientY; }, { passive: true });
+  addEventListener('pointerleave', () => { px = py = -999; });
+  document.addEventListener('visibilitychange', start);
+  reduce.addEventListener && reduce.addEventListener('change', start);
+  const dm = matchMedia('(prefers-color-scheme: dark)');
+  dm.addEventListener && dm.addEventListener('change', () => { colors(); if (reduce.matches || paused) draw(performance.now()); });
+  colors(); resize(); start();
+  window.bgBurst = () => { burst = 1; for (let i = 0; i < 12; i++) spawnPacket(); };
+  window.bgPause = p => { paused = p; document.body.classList.toggle('still', p); start(); };
+})();
+/* ===== Разбор ASN.1 (BER/DER) и CMS SignedData ===== */
+const OID = {
+  signedData: '1.2.840.113549.1.7.2',
+  data: '1.2.840.113549.1.7.1',
+  signingTime: '1.2.840.113549.1.9.5',
+  timestamp: '1.2.840.113549.1.9.16.2.14',
+  tin: '1.2.860.3.16.1.1',
+  pinfl: '1.2.860.3.16.1.2'
+};
+const NAME_OIDS = {
+  '2.5.4.3': 'CN', '2.5.4.4': 'Фамилия', '2.5.4.41': 'Имя', '2.5.4.42': 'Имя',
+  '2.5.4.10': 'Организация', '2.5.4.11': 'Подразделение', '2.5.4.12': 'Должность',
+  '2.5.4.7': 'Город', '2.5.4.8': 'Регион', '2.5.4.6': 'Страна', '2.5.4.15': 'Категория',
+  '1.2.840.113549.1.9.1': 'Email', '1.2.860.3.16.1.1': 'ИНН', '1.2.860.3.16.1.2': 'ПИНФЛ'
+};
+
+function readNode(b, pos, depth) {
+  if (depth > 64) throw new Error('Слишком глубокая вложенность структуры');
+  if (pos >= b.length) throw new Error('Данные обрываются раньше времени');
+  const start = pos;
+  const t = b[pos++];
+  const cls = t >> 6, cons = (t & 0x20) !== 0;
+  let num = t & 0x1f;
+  if (num === 0x1f) {
+    num = 0; let c;
+    do { if (pos >= b.length) throw new Error('Данные обрываются раньше времени'); c = b[pos++]; num = num * 128 + (c & 0x7f); } while (c & 0x80);
+  }
+  if (pos >= b.length) throw new Error('Данные обрываются раньше времени');
+  const l = b[pos++];
+  let len;
+  if (l < 0x80) len = l;
+  else if (l === 0x80) len = -1;
+  else {
+    const n = l & 0x7f;
+    if (n > 4) throw new Error('Неверная длина элемента');
+    len = 0;
+    for (let i = 0; i < n; i++) { if (pos >= b.length) throw new Error('Данные обрываются раньше времени'); len = len * 256 + b[pos++]; }
+  }
+  const node = { cls, cons, num, start, cs: pos, bytes: b };
+  if (len === -1) {
+    if (!cons) throw new Error('Неверная длина элемента');
+    node.children = [];
+    for (;;) {
+      if (pos + 1 >= b.length) throw new Error('Данные обрываются раньше времени');
+      if (b[pos] === 0 && b[pos + 1] === 0) { node.ce = pos; node.end = pos + 2; break; }
+      const ch = readNode(b, pos, depth + 1);
+      node.children.push(ch); pos = ch.end;
+    }
+  } else {
+    const ce = pos + len;
+    if (ce > b.length) throw new Error('Подпись обрезана: данных меньше, чем заявлено');
+    node.ce = ce; node.end = ce;
+    if (cons) {
+      node.children = [];
+      while (pos < ce) { const ch = readNode(b, pos, depth + 1); node.children.push(ch); pos = ch.end; }
+    }
+  }
+  return node;
+}
+
+const isU = (n, num) => !!n && n.cls === 0 && n.num === num;
+const isCtx = (n, num) => !!n && n.cls === 2 && n.num === num;
+const content = n => n.bytes.subarray(n.cs, n.ce);
+
+function concat(parts) {
+  let total = 0; parts.forEach(p => total += p.length);
+  const out = new Uint8Array(total); let o = 0;
+  parts.forEach(p => { out.set(p, o); o += p.length; });
+  return out;
+}
+function octets(n) { return n.cons ? concat(n.children.map(octets)) : content(n); }
+
+function decOID(u) {
+  const out = []; let v = 0, first = true;
+  for (const c of u) {
+    v = v * 128 + (c & 0x7f);
+    if (!(c & 0x80)) {
+      if (first) { if (v < 40) out.push(0, v); else if (v < 80) out.push(1, v - 40); else out.push(2, v - 80); first = false; }
+      else out.push(v);
+      v = 0;
+    }
+  }
+  return out.join('.');
+}
+const oidOf = n => decOID(content(n));
+function hex(u) { return Array.from(u, x => x.toString(16).padStart(2, '0')).join('').toUpperCase(); }
+function hexInt(u) { let i = 0; while (i < u.length - 1 && u[i] === 0) i++; return hex(u.subarray(i)); }
+
+function decStr(n) {
+  const u = content(n);
+  if (n.num === 0x1e) { let s = ''; for (let i = 0; i + 1 < u.length; i += 2) s += String.fromCharCode((u[i] << 8) | u[i + 1]); return s; }
+  return new TextDecoder('utf-8').decode(u);
+}
+function decTime(n) {
+  const s = new TextDecoder('ascii').decode(content(n));
+  let m;
+  if (n.num === 23) {
+    m = s.match(/^(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)?Z$/);
+    if (!m) return null;
+    const y = +m[1] < 50 ? 2000 + +m[1] : 1900 + +m[1];
+    return new Date(Date.UTC(y, +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)));
+  }
+  m = s.match(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)?(?:[.,]\d+)?Z$/);
+  if (!m) return null;
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)));
+}
+
+function parseName(n) {
+  const attrs = [];
+  (n.children || []).forEach(set => (set.children || []).forEach(seq => {
+    try {
+      const oid = oidOf(seq.children[0]);
+      attrs.push({ oid, label: NAME_OIDS[oid] || oid, value: decStr(seq.children[1]) });
+    } catch (e) { /* пропускаем непонятный атрибут */ }
+  }));
+  const get = oid => (attrs.find(a => a.oid === oid) || {}).value || '';
+  return { attrs, get };
+}
+
+function parseCert(node) {
+  const tbs = node.children[0];
+  let i = isCtx(tbs.children[0], 0) ? 1 : 0;
+  const serial = hexInt(content(tbs.children[i]));
+  const issuer = parseName(tbs.children[i + 2]);
+  const validity = tbs.children[i + 3];
+  const subject = parseName(tbs.children[i + 4]);
+  return {
+    serial, issuer, subject,
+    notBefore: decTime(validity.children[0]),
+    notAfter: decTime(validity.children[1]),
+    cn: subject.get('2.5.4.3'),
+    org: subject.get('2.5.4.10'),
+    title: subject.get('2.5.4.12'),
+    tin: subject.get(OID.tin),
+    pinfl: subject.get(OID.pinfl)
+  };
+}
+
+function parseAttrs(n) {
+  return (n.children || []).map(a => ({ oid: oidOf(a.children[0]), values: a.children[1].children || [] }));
+}
+
+function algName(oid) {
+  if (oid.startsWith('1.2.860.3.15')) return 'O‘z DSt 1092 (стандарт Узбекистана)';
+  return oid;
+}
+
+function parseSignedData(sd) {
+  const ch = sd.children;
+  const encap = ch[2];
+  const eType = oidOf(encap.children[0]);
+  let econtent = null;
+  if (encap.children[1]) econtent = concat((encap.children[1].children || []).map(octets));
+  let certs = [], siNode = null;
+  for (let i = 3; i < ch.length; i++) {
+    const n = ch[i];
+    if (isCtx(n, 0)) certs = (n.children || []).filter(c => isU(c, 16)).map(c => { try { return parseCert(c); } catch (e) { return null; } }).filter(Boolean);
+    else if (isU(n, 17)) siNode = n;
+  }
+  const signers = (siNode ? siNode.children : []).map(si => parseSigner(si, certs));
+  return { eType, econtent, certs, signers };
+}
+
+function parseSigner(si, certs) {
+  const c = si.children; let k = 1;
+  const sid = c[k++];
+  let serial = null;
+  if (isU(sid, 16)) serial = hexInt(content(sid.children[1]));
+  const digestAlg = oidOf(c[k++].children[0]);
+  let signed = [], unsigned = [];
+  if (isCtx(c[k], 0)) { signed = parseAttrs(c[k]); k++; }
+  const sigAlg = oidOf(c[k++].children[0]);
+  k++;
+  if (c[k] && isCtx(c[k], 1)) unsigned = parseAttrs(c[k]);
+
+  let signingTime = null;
+  const st = signed.find(a => a.oid === OID.signingTime);
+  if (st && st.values[0]) signingTime = decTime(st.values[0]);
+
+  let tsa = null;
+  const ts = unsigned.find(a => a.oid === OID.timestamp);
+  if (ts && ts.values[0]) {
+    try {
+      const tsSd = parseSignedData(ts.values[0].children[1].children[0]);
+      const tst = readNode(tsSd.econtent, 0, 0);
+      const gt = (tst.children || []).find(x => isU(x, 24));
+      const tsaCert = tsSd.signers[0] && tsSd.signers[0].cert;
+      tsa = { time: gt ? decTime(gt) : null, name: tsaCert ? (tsaCert.cn || tsaCert.org) : '' };
+    } catch (e) { tsa = { time: null, name: '', error: true }; }
+  }
+
+  let cert = serial ? certs.find(x => x.serial === serial) : null;
+  if (!cert) cert = certs.find(x => x.tin || x.pinfl) || null;
+  return { serial, cert, digestAlg: algName(digestAlg), sigAlg: algName(sigAlg), signingTime, tsa };
+}
+
+/* ===== Вход: чистим base64 ===== */
+function cleanB64(s) {
+  s = s.trim().replace(/^["']+|["']+$/g, '');
+  s = s.replace(/\\[rnt]/g, '').replace(/\\\//g, '/').replace(/\s+/g, '');
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  return s;
+}
+function extractB64(text) {
+  let t = text.trim();
+  if (/^[{\[]/.test(t)) {
+    try {
+      const o = JSON.parse(t); let best = '';
+      (function walk(v) {
+        if (typeof v === 'string') { const c = cleanB64(v); if (c.length > best.length && /^[A-Za-z0-9+/=]+$/.test(c)) best = c; }
+        else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+      })(o);
+      if (best.length > 100) return best;
+    } catch (e) { /* не JSON — идём дальше */ }
+  }
+  let c = cleanB64(t);
+  if (!/^[A-Za-z0-9+/=]+$/.test(c)) {
+    const runs = t.replace(/\\[rnt]/g, '').replace(/\\\//g, '/').match(/[A-Za-z0-9+/=]{100,}/g);
+    if (!runs) return null;
+    c = runs.sort((a, b) => b.length - a.length)[0];
+  }
+  c = c.replace(/=+$/, '');
+  while (c.length % 4) c += '=';
+  return c;
+}
+function b64ToBytes(s) {
+  const bin = atob(s); const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+
+/* ===== Главная функция ===== */
+function decodeSignature(bytes) {
+  const result = { kind: 'cms', signers: [], certs: [], text: null, json: null, detached: false };
+  if (bytes[0] !== 0x30) {
+    result.kind = 'plain';
+    result.text = new TextDecoder('utf-8').decode(bytes);
+  } else {
+    const root = readNode(bytes, 0, 0);
+    if (!isU(root, 16) || !root.children || !isU(root.children[0], 6)) throw new Error('Это не похоже на подпись PKCS#7');
+    const ct = oidOf(root.children[0]);
+    if (ct !== OID.signedData) throw new Error('Внутри не подписанные данные (тип ' + ct + ')');
+    const sd = parseSignedData(root.children[1].children[0]);
+    result.signers = sd.signers; result.certs = sd.certs;
+    if (!sd.econtent || !sd.econtent.length) result.detached = true;
+    else result.text = new TextDecoder('utf-8').decode(sd.econtent);
+  }
+  if (result.text != null) {
+    try { result.json = JSON.parse(result.text); } catch (e) { result.json = null; }
+  }
+  return result;
+}
+
+/* ===== Интерфейс в стиле iOS ===== */
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const svg = (inner, sw) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (sw || 3) + '" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+const ICON = {
+  ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', warn: '<path d="M12 6v8"/><path d="M12 18h.01"/>',
+  err: '<path d="M7 7l10 10M17 7L7 17"/>', info: '<path d="M12 11v7"/><path d="M12 6.5h.01"/>',
+  doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'
+};
+const TONE = { ok: 'green', warn: 'orange', err: 'red', info: 'gray' };
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const t = new Date(d.getTime() + 5 * 3600e3), p = n => String(n).padStart(2, '0');
+  return p(t.getUTCDate()) + '.' + p(t.getUTCMonth() + 1) + '.' + t.getUTCFullYear() + ', ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
+}
+function fmtDay(d) { return d ? fmtDate(d).slice(0, 10) : '—'; }
+function money(v) { return Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function words(s) {
+  return String(s || '').toUpperCase().replace(/[ʻʼ'’‘`"]/g, '').replace(/[^A-ZА-ЯЁЎҚҒҲ0-9]+/g, ' ').split(' ').filter(w => w.length > 1);
+}
+const isCyr = s => /[А-ЯЁа-яё]/.test(s), isLat = s => /[A-Za-z]/.test(s);
+function sameName(a, b) {
+  if (!a || !b) return null;
+  if ((isCyr(a) && !isCyr(b) && isLat(b)) || (isCyr(b) && !isCyr(a) && isLat(a))) return 'script';
+  const A = words(a), B = new Set(words(b));
+  const common = A.filter(w => B.has(w)).length;
+  return common >= Math.min(2, A.length, B.size) && common > 0;
+}
+const SIDES = { seller: 'продавец («Ваши сведения»)', buyer: 'покупатель («Сведения о партнере»)', consignor: 'грузоотправитель', consignee: 'грузополучатель', carrier: 'перевозчик', customer: 'заказчик', executor: 'исполнитель' };
+
+function signerChecks(s, doc) {
+  const out = [], c = s.cert;
+  if (!c) { out.push(['warn', 'Сертификат подписанта не найден внутри подписи.']); return out; }
+  const when = s.tsa && s.tsa.time || s.signingTime;
+  if (when && c.notBefore && c.notAfter) {
+    if (when < c.notBefore) out.push(['err', 'На момент подписи сертификат ещё не действовал.']);
+    else if (when > c.notAfter) out.push(['err', 'На момент подписи срок сертификата истёк.']);
+    else out.push(['ok', 'Сертификат действовал в момент подписи.']);
+  }
+  if (!s.tsa) out.push(['info', 'Метки времени нет: время взято с компьютера подписанта.']);
+  if (doc && typeof doc === 'object') {
+    let side = null;
+    Object.keys(doc).forEach(k => {
+      const m = k.match(/^(.*)tin$/);
+      if (m && m[1] && doc[k] && (String(doc[k]) === c.tin || String(doc[k]) === c.pinfl)) side = side || m[1];
+    });
+    if (side) {
+      out.push(['ok', 'ИНН совпадает с полем ' + side + 'tin — ' + (SIDES[side] || side) + '.']);
+      const party = doc[side];
+      if (party && typeof party === 'object' && party.director) {
+        const r = sameName(c.cn, party.director);
+        if (r === true) out.push(['ok', 'Подписант — директор из документа.']);
+        else if (r === 'script') out.push(['info', 'Имена подписанта и директора записаны разными алфавитами — сравнить нельзя.']);
+        else if (party.accountant && sameName(c.cn, party.accountant) === true) out.push(['info', 'Подписант — главный бухгалтер из документа, а не директор.']);
+        else out.push(['warn', 'Подписант не совпадает с директором в документе (' + party.director + '). Если это не новый директор, проверьте полномочия.']);
+      }
+    } else if (c.tin || c.pinfl) out.push(['warn', 'ИНН/ПИНФЛ сертификата не найден среди сторон документа.']);
+  }
+  return out;
+}
+
+const KINDS = [
+  ['facturaid', 'Счёт-фактура', 'facturadoc', 'facturano', 'facturadate'],
+  ['waybillid', 'ТТН', 'waybilldoc', 'waybillno', 'waybilldate'],
+  ['waybilllocalid', 'ТТН', 'waybilldoc', 'waybillno', 'waybilldate'],
+  ['empowermentid', 'Доверенность', 'empowermentdoc', 'empowermentno', 'empowermentdateofissue'],
+  ['actid', 'Акт', 'actdoc', 'actno', 'actdate'],
+  ['didoxcontractid', 'Договор', 'contractdoc', 'contractno', 'contractdate']
+];
+
+/* ----- строительные блоки iOS ----- */
+function secH(t) { return el('div', 'sec-h', t); }
+function group() { return el('div', 'group'); }
+function row(label, value, mono) {
+  const c = el('div', 'cell'); c.append(el('span', 'lbl', label));
+  if (value != null) c.append(el('span', 'val' + (mono ? ' mono' : ''), value));
+  return c;
+}
+function iconRow(tone, iconKey, text) {
+  const c = el('div', 'cell ico multi');
+  const sq = el('span', 'sq ' + TONE[tone] || tone); sq.className = 'sq ' + (TONE[tone] || tone); sq.innerHTML = svg(ICON[iconKey || tone]); sq.setAttribute('aria-hidden', 'true');
+  c.append(sq, el('span', 'lbl', text));
+  return c;
+}
+function initials(name) {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[1] || w[0] || '?')[0] + (w[0] && w[1] ? w[0][0] : '')).toUpperCase();
+}
+
+function renderHero(json) {
+  const box = el('div', 'hero appear');
+  let kind = null;
+  if (json && typeof json === 'object' && !Array.isArray(json)) kind = KINDS.find(k => json[k[0]]);
+  const head = el('div', 'kind');
+  const badge = el('span', 'badge'); badge.innerHTML = svg(ICON.doc, 2); badge.setAttribute('aria-hidden', 'true');
+  head.append(badge, el('b', null, kind ? kind[1] : 'Документ'));
+  box.append(head);
+  const dl = el('dl');
+  const add = (t, v) => { if (v == null || v === '') return; const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); };
+  if (kind) { const d = json[kind[2]] || {}; add('Номер', d[kind[3]]); add('Дата', d[kind[4]]); }
+  const prods = json && json.productlist && Array.isArray(json.productlist.products) ? json.productlist.products : null;
+  if (prods) {
+    add('Позиций', prods.length);
+    const key = prods.some(p => p.deliverysumwithvat != null) ? 'deliverysumwithvat' : (prods.some(p => p.deliverysum != null) ? 'deliverysum' : null);
+    if (key) add(key === 'deliverysumwithvat' ? 'Сумма с НДС' : 'Сумма', money(prods.reduce((a, p) => a + (parseFloat(p[key]) || 0), 0)));
+  }
+  if (dl.children.length) box.append(dl);
+  return box;
+}
+
+function renderSigner(s, doc, idx) {
+  const c = s.cert || {};
+  const wrap = el('div', 'signer appear'); wrap.style.animationDelay = (idx * .08) + 's';
+  const g = group();
+  const ct = el('div', 'contact');
+  ct.append(el('div', 'ava', initials(c.cn)), el('div', 'nm', c.cn || 'Подписант не определён'), el('div', 'rl', [c.title, c.org].filter(Boolean).join(', ') || 'Должность не указана'));
+  g.append(ct);
+  wrap.append(g);
+  wrap.append(secH('Данные'));
+  const g2 = group();
+  [['ИНН', c.tin, true], ['ПИНФЛ', c.pinfl, true], ['Подписано', fmtDate(s.tsa && s.tsa.time || s.signingTime)],
+   ['Метка времени', s.tsa && s.tsa.time ? (s.tsa.name || 'есть') : 'нет'],
+   ['Сертификат', c.notBefore ? fmtDay(c.notBefore) + ' — ' + fmtDay(c.notAfter) : ''],
+   ['Серийный №', c.serial || s.serial, true], ['Выдан', c.issuer ? c.issuer.get('2.5.4.3') : ''], ['Алгоритм', s.sigAlg]
+  ].forEach(([l, v, m]) => { if (v) g2.append(row(l, v, m)); });
+  wrap.append(g2);
+  const checks = signerChecks(s, doc);
+  if (checks.length) {
+    wrap.append(secH('Проверки'));
+    const g3 = group(); checks.forEach(([t, msg]) => g3.append(iconRow(t, t, msg))); wrap.append(g3);
+  }
+  wrap.append(el('p', 'sec-f', 'Время — по Ташкенту.'));
+  return wrap;
+}
+
+/* ----- JSON-дерево ----- */
+let current = null, query = '', view = 'tree', hits = 0;
+function hl(parent, text) {
+  if (!query) { parent.append(document.createTextNode(text)); return 0; }
+  const low = text.toLowerCase(); let i = 0, n = 0, j;
+  while ((j = low.indexOf(query, i)) !== -1) {
+    if (j > i) parent.append(document.createTextNode(text.slice(i, j)));
+    parent.append(el('mark', null, text.slice(j, j + query.length))); i = j + query.length; n++;
+  }
+  if (i < text.length) parent.append(document.createTextNode(text.slice(i)));
+  return n;
+}
+function hasMatch(key, v) {
+  if (key != null && String(key).toLowerCase().includes(query)) return true;
+  if (v && typeof v === 'object') return Object.entries(v).some(([k, x]) => hasMatch(k, x));
+  return String(v).toLowerCase().includes(query);
+}
+function keySpan(parent, key, isIdx) {
+  if (key == null) return;
+  const k = el('span', 'k'); hits += hl(k, isIdx ? '[' + key + ']' : '"' + key + '"');
+  parent.append(k, document.createTextNode(': '));
+}
+function renderNode(key, v, depth, isIdx) {
+  if (v && typeof v === 'object') {
+    const arr = Array.isArray(v), entries = Object.entries(v);
+    const d = el('details'); d.open = query ? hasMatch(key, v) : depth < 2;
+    const sum = el('summary'); keySpan(sum, key, isIdx);
+    sum.append(document.createTextNode(arr ? '[' : '{'), el('span', 'meta', arr ? entries.length + ' эл.' : entries.length + ' полей'));
+    d.append(sum);
+    const kids = el('div', 'kids'); entries.forEach(([k, x]) => kids.append(renderNode(k, x, depth + 1, arr))); d.append(kids);
+    const close = el('div', null, arr ? ']' : '}'); close.style.paddingLeft = '14px'; d.append(close);
+    return d;
+  }
+  const r = el('div', 'leaf'); keySpan(r, key, isIdx);
+  let cls = 's', txt;
+  if (v === null) { cls = 'z'; txt = 'null'; } else if (typeof v === 'string') txt = '"' + v + '"';
+  else if (typeof v === 'number') { cls = 'n'; txt = String(v); } else { cls = 'b'; txt = String(v); }
+  const sp = el('span', cls); hits += hl(sp, txt); r.append(sp);
+  return r;
+}
+function drawJson() {
+  const box = $('jsonbox'); if (!box) return;
+  box.textContent = ''; hits = 0;
+  if (view === 'text' || current.json == null) { const pre = el('pre', 'raw'); hits += hl(pre, current.json != null ? JSON.stringify(current.json, null, 2) : current.text); box.append(pre); }
+  else box.append(renderNode(null, current.json, 0, false));
+  const cnt = $('count'); if (cnt) cnt.textContent = query ? (hits ? 'Найдено: ' + hits : 'Не найдено') : '';
+  const first = box.querySelector('mark'); if (first && query) first.scrollIntoView({ block: 'nearest' });
+}
+function setAll(open) { document.querySelectorAll('#jsonbox details').forEach(d => d.open = open); }
+
+/* ----- уведомление в Dynamic Island ----- */
+function toast(msg) {
+  const t = $('toast'); $('toastText').textContent = msg; t.classList.add('wide');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('wide'), 1800);
+}
+async function copyText(s) {
+  try { await navigator.clipboard.writeText(s); toast('Скопировано'); return; } catch (e) {}
+  const ta = document.createElement('textarea'); ta.value = s; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.append(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove(); toast(ok ? 'Скопировано' : 'Не удалось скопировать');
+}
+
+function showError(msg, hint) {
+  const out = $('out'); out.textContent = '';
+  out.append(secH('Ошибка'));
+  const g = group(); g.setAttribute('role', 'alert'); g.append(iconRow('err', 'err', msg)); out.append(g);
+  if (hint) out.append(el('p', 'sec-f', hint));
+}
+
+function render(r) {
+  current = r; query = ''; const out = $('out'); out.textContent = '';
+  if (r.json != null || r.text != null) out.append(renderHero(r.json));
+  if (r.kind !== 'cms' || r.detached) {
+    const g = group(); g.style.marginTop = '16px';
+    if (r.kind !== 'cms') g.append(iconRow('warn', 'warn', 'Это не подпись, а просто base64 — подписантов нет.'));
+    if (r.detached) g.append(iconRow('warn', 'warn', 'Подпись отделённая: документа внутри нет, только данные подписанта.'));
+    out.append(g);
+  }
+  const panels = [], names = [];
+  if (r.kind === 'cms') {
+    const p = el('div');
+    if (!r.signers.length) { p.append(secH('Подписант')); const g = group(); g.append(iconRow('info', 'info', 'Подписантов в подписи нет.')); p.append(g); }
+    r.signers.forEach((x, i) => { if (r.signers.length > 1) p.append(secH('Подписант ' + (i + 1))); else { const sp = el('div'); sp.style.height = '16px'; p.append(sp); } p.append(renderSigner(x, r.json, i)); });
+    panels.push(p); names.push(r.signers.length > 1 ? 'Подписанты (' + r.signers.length + ')' : 'Подписант');
+  }
+  if (!r.detached) {
+    const p = el('div');
+    const s = el('label', 'search');
+    s.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+    const q = el('input'); q.type = 'search'; q.placeholder = 'Поиск'; q.setAttribute('aria-label', 'Поиск по документу');
+    let tm; q.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(() => { query = q.value.trim().toLowerCase(); drawJson(); }, 150); });
+    s.append(q); p.append(s);
+    const bar = el('div', 'jbar');
+    if (r.json != null) {
+      const mini = el('div', 'mini'); const bT = el('button', null, 'Дерево'), bX = el('button', null, 'Текст');
+      let allOpen = false;
+      const bAll = el('button', 'link', 'Развернуть');
+      const sync = () => { bT.setAttribute('aria-pressed', view === 'tree'); bX.setAttribute('aria-pressed', view === 'text'); bAll.hidden = view !== 'tree'; };
+      bT.onclick = () => { view = 'tree'; sync(); drawJson(); }; bX.onclick = () => { view = 'text'; sync(); drawJson(); };
+      bAll.onclick = () => { allOpen = !allOpen; setAll(allOpen); bAll.textContent = allOpen ? 'Свернуть' : 'Развернуть'; };
+      mini.append(bT, bX); bar.append(mini, bAll); sync();
+    }
+    const bCopy = el('button', 'link', 'Копировать'); bCopy.onclick = () => copyText(r.json != null ? JSON.stringify(r.json, null, 2) : r.text);
+    bar.append(bCopy);
+    const cnt = el('span', 'count'); cnt.id = 'count'; bar.append(cnt);
+    p.append(bar);
+    const box = el('div', 'json'); box.id = 'jsonbox'; p.append(box);
+    panels.push(p); names.push(r.json != null ? 'JSON' : 'Содержимое');
+  }
+  if (panels.length > 1) {
+    const seg = el('div', 'seg'); seg.setAttribute('role', 'tablist');
+    const thumb = el('span', 'thumb'); thumb.setAttribute('aria-hidden', 'true'); thumb.style.width = 'calc((100% - 4px) / ' + panels.length + ')'; seg.append(thumb);
+    const btns = names.map((n, i) => {
+      const b = el('button', null, n); b.setAttribute('role', 'tab'); b.id = 'tab' + i; panels[i].id = 'panel' + i;
+      panels[i].setAttribute('role', 'tabpanel'); panels[i].setAttribute('aria-labelledby', b.id); b.setAttribute('aria-controls', panels[i].id);
+      b.onclick = () => select(i);
+      b.onkeydown = e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const n2 = (i + (e.key === 'ArrowRight' ? 1 : panels.length - 1)) % panels.length; select(n2); btns[n2].focus(); } };
+      seg.append(b); return b;
+    });
+    function select(i) { thumb.style.transform = 'translateX(' + (i * 100) + '%)'; panels.forEach((p, j) => { p.hidden = j !== i; btns[j].setAttribute('aria-selected', j === i); btns[j].tabIndex = j === i ? 0 : -1; }); }
+    out.append(seg); panels.forEach(p => out.append(p)); select(0);
+  } else panels.forEach(p => out.append(p));
+  drawJson();
+  if (window.bgBurst) window.bgBurst();
+  const hero = out.firstElementChild; if (hero) hero.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  toast(r.kind === 'cms' ? 'Подпись расшифрована' : 'Содержимое расшифровано');
+}
+
+function runText(text) {
+  if (!text.trim()) { showError('Поле пустое.', 'Вставьте подпись в base64.'); return; }
+  const b64 = extractB64(text);
+  if (!b64) { showError('Не нашли base64 в тексте.', 'Скопируйте значение подписи целиком.'); return; }
+  let bytes; try { bytes = b64ToBytes(b64); } catch (e) { showError('Это не base64.', 'Проверьте, что подпись скопирована целиком.'); return; }
+  runBytes(bytes);
+}
+function runBytes(bytes) {
+  const go = $('go'); go.classList.add('busy'); setTimeout(() => go.classList.remove('busy'), 400);
+  try { render(decodeSignature(bytes)); }
+  catch (e) { showError('Не удалось разобрать подпись: ' + e.message, 'Чаще всего подпись скопирована не полностью — проверьте конец строки.'); }
+}
+
+$('go').onclick = () => runText($('src').value);
+$('clear').onclick = () => { $('src').value = ''; current = null; const out = $('out'); out.textContent = ''; out.append(secH('Готово')); const g = group(); g.append(iconRow('info', 'info', 'Поле очищено. Вставьте новую подпись.')); out.append(g); $('src').focus(); };
+$('src').addEventListener('paste', () => setTimeout(() => runText($('src').value), 0));
+$('src').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runText($('src').value); });
+
+function readFile(f) {
+  const rd = new FileReader();
+  rd.onload = () => { const u = new Uint8Array(rd.result);
+    if (u[0] === 0x30) { $('src').value = '(двоичный файл ' + f.name + ')'; runBytes(u); }
+    else { const t = new TextDecoder('utf-8').decode(u); $('src').value = t; runText(t); } };
+  rd.onerror = () => showError('Не удалось прочитать файл.');
+  rd.readAsArrayBuffer(f);
+}
+$('file').addEventListener('change', e => { if (e.target.files[0]) readFile(e.target.files[0]); e.target.value = ''; });
+const dz = $('dropzone');
+['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('drop-over'); }));
+['dragleave', 'drop'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove('drop-over'); }));
+dz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+/* навбар: маленький заголовок появляется, когда большой уходит под панель */
+new IntersectionObserver(([e]) => $('topbar').classList.toggle('solid', !e.isIntersecting), { rootMargin: '-100px 0px 0px 0px', threshold: 0 }).observe($('large'));
+$('motion').addEventListener('change', e => { window.bgPause(!e.target.checked); toast(e.target.checked ? 'Анимация включена' : 'Анимация выключена'); });
+</script>
+</body>
+</html>
