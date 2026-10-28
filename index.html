@@ -1018,6 +1018,9 @@ dz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTrans
 const REGIONS = ['3', '6', '8', '10', '12', '14', '18', '22', '24', '26', '27', '30', '33', '35', '50'];
 const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => String(a + i));
 const PACKS = ['KIZ', 'NomUpak', 'IdentTransUpak'];
+// Код маркировки — от 18 до 63 символов (без скрытого разделителя GS), в одной СФ — не больше 5000 кодов
+const MK_LEN = [18, 63], MK_PER_DOC = 5000;
+const mkLen = c => c.replace(//g, '').length;
 
 // Поля по номеру столбца шаблона (строка с номерами 1, 2, 3…).
 // lvl: doc — первая строка документа, cargo — первая строка груза, item — каждая позиция.
@@ -1299,7 +1302,7 @@ function validateSheet(X, ws, sheetName) {
   const fix = (r, n, i, val, why) => fixes.set(addr(r, n), { addr: addr(r, n), row: r + 1, where: letter(n) + ' (' + n + ') · ' + title(n), old: i.raw, val, why });
   const cur = (r, n) => { const fx = fixes.get(addr(r, n)); if (fx) return fx.val; const i = get(r, n); return i ? i.s : ''; };
 
-  let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [];
+  let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [], docCodes = [];
   let inherit = {};
   for (let r = found.r + 1; r <= ref.e.r; r++) {
     const filled = Object.keys(found.map).some(n => get(r, +n));
@@ -1309,7 +1312,7 @@ function validateSheet(X, ws, sheetName) {
     let newDoc = spec.perRow || !!a;
     if (!spec.perRow && !a && docStartRow < 0) { push('err', r, 1, 'Первая строка с данными без п.п. документа — укажите номер в столбце A.'); newDoc = true; }
     if (newDoc) {
-      docs++; docStartRow = r; pos = 0; cargo = 0;
+      docs++; docStartRow = r; pos = 0; cargo = 0; docCodes.push({ r, n: 0 });
       if (!spec.perRow && a) { docSeq.push({ r, v: a.s }); if (!/^\d+$/.test(a.s)) push('err', r, 1, 'П.п. документа — целое число.', a.raw); }
     }
     const newCargo = spec.cargo && (newDoc || !!get(r, spec.cargo));
@@ -1414,15 +1417,17 @@ function validateSheet(X, ws, sheetName) {
         list.forEach(code => {
           if (seen.has(code)) push('err', r, mc, 'Код повторяется в этой же ячейке.', code); seen.add(code);
           if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(code)) push('err', r, mc, 'В коде кириллица — похоже, код вводили не в той раскладке.', code);
-          else if (code.length < 8) push('warn', r, mc, 'Слишком короткий код маркировки.', code);
+          else if (mkLen(code) < MK_LEN[0] || mkLen(code) > MK_LEN[1]) push('err', r, mc, 'Длина кода маркировки — от ' + MK_LEN[0] + ' до ' + MK_LEN[1] + ' символов, а здесь ' + mkLen(code) + '.', code);
           if (!codes.has(code)) codes.set(code, []); codes.get(code).push(r + 1);
         });
+        if (docCodes.length) docCodes[docCodes.length - 1].n += list.length;
         const q = get(r, spec.qty);
         if (P && P.s === 'KIZ' && q && !isNaN(toNum(q.s)) && toNum(q.s) !== list.length) push('warn', r, mc, 'Для KIZ число кодов обычно равно количеству: кодов ' + list.length + ', количество ' + q.s + '.');
       }
     }
   }
 
+  if (spec.mark) docCodes.filter(d => d.n > MK_PER_DOC).forEach(d => push('err', d.r, spec.mark[2], 'В одном документе можно указать не больше ' + MK_PER_DOC + ' кодов маркировки, а здесь ' + d.n + '. Разделите товары на несколько документов.'));
   // п.п. документов: все единицы или 1, 2, 3…
   if (docSeq.length > 1) {
     const allOne = docSeq.every(d => d.v === '1'), seq = docSeq.every((d, i) => d.v === String(i + 1));
@@ -1722,7 +1727,8 @@ function mkAnalyze(items) {
     if (a.length >= 20 && b.startsWith(a)) similar.push({ short: a, long: b, where: map.get(a)[0].where + ' и ' + map.get(b)[0].where });
   }
   const unique = [...map.values()].map(l => l[0].code);
-  return { total: items.length, unique, dups, similar, extra: items.length - map.size };
+  const badLen = items.filter(it => mkLen(it.code) < MK_LEN[0] || mkLen(it.code) > MK_LEN[1]);
+  return { total: items.length, unique, dups, similar, badLen, extra: items.length - map.size };
 }
 
 function mkRender(res, label, cols) {
@@ -1731,7 +1737,7 @@ function mkRender(res, label, cols) {
   badge.innerHTML = svg('<path d="M4 5v14M7 5v14M11 5v14M14 5v14M17 5v14M20 5v14"/>', 2);
   head.append(badge, el('b', null, 'Дубли маркировки')); box.append(head);
   const dl = el('dl');
-  [['Источник', label], ['Всего кодов', res.total], ['Уникальных', res.unique.length], ['Кодов с дублями', res.dups.length], ['Лишних повторов', res.extra]]
+  [['Источник', label], ['Всего кодов', res.total], ['Уникальных', res.unique.length], ['Кодов с дублями', res.dups.length], ['Лишних повторов', res.extra], ['Неверной длины', res.badLen.length]]
     .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
   box.append(dl); out.append(box);
 
@@ -1748,6 +1754,13 @@ function mkRender(res, label, cols) {
       g.append(issueRow('err', 'Встречается ' + d.n + ' раз' + (d.n % 10 >= 2 && d.n % 10 <= 4 && (d.n % 100 < 12 || d.n % 100 > 14) ? 'а' : ''), w + (d.gs ? ' (часть со скрытым разделителем GS)' : ''), d.code));
     });
     if (res.dups.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.dups.length - LIMIT) + ' — скопируйте список дублей целиком'));
+    out.append(g);
+  }
+  if (res.badLen.length) {
+    out.append(secH('Неверная длина кода (' + res.badLen.length + ')'));
+    const g = group();
+    res.badLen.slice(0, LIMIT).forEach(it => g.append(issueRow('err', it.where, 'Длина кода маркировки — от ' + MK_LEN[0] + ' до ' + MK_LEN[1] + ' символов, а здесь ' + mkLen(it.code) + '.', it.code)));
+    if (res.badLen.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.badLen.length - LIMIT)));
     out.append(g);
   }
   if (res.similar.length) {
