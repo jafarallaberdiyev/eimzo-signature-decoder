@@ -140,6 +140,7 @@ textarea.ids{min-height:88px;max-height:30vh}
 .iss .w{display:block;font-size:13px;color:var(--sec);margin-bottom:2px}
 .iss .v{display:block;font:12px/1.4 var(--mono);color:var(--sec);margin-top:3px;overflow-wrap:anywhere}
 .more{font-size:13px;color:var(--sec);padding:10px 16px}
+.iss .v.fixed{color:var(--green)}
 
 /* Карточка документа */
 .hero{margin:16px 16px 0;padding:18px 18px 16px;border-radius:16px;background:var(--cell);display:grid;gap:12px}
@@ -1229,6 +1230,43 @@ function checkValue(f, i, prec, add) {
   }
 }
 
+// Безопасное исправление: вернёт [новое значение, что сделано] или null, если исправлять нечего или нельзя
+const pad2 = n => String(n).padStart(2, '0');
+function fixValue(X, f, i, prec) {
+  const s = i.s;
+  if (STRICT[f.t]) {
+    let v = i.raw.replace(/[\s ]/g, ''), why = [];
+    if (v !== i.raw) why.push('убраны пробелы');
+    if (f.t === 'ikpu' && i.num && /^\d{16}$/.test(v)) { v = '0' + v; why.push('возвращён ведущий 0'); }
+    if (f.t === 'enum') { const m = f.e.find(x => x.toLowerCase() === v.toLowerCase()); if (m && m !== v) { v = m; why.push('написание как в инструкции'); } }
+    if (i.num && /^\d+$/.test(v) && /^(inn|pinfl|ikpu)$/.test(f.t)) why.push('записано текстом');
+    return why.length ? [v, why.join(', ')] : null;
+  }
+  switch (f.t) {
+    case 'date': {
+      if (i.isDate) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата Excel переведена в текст ДД.ММ.ГГГГ']; }
+      if (!validDate(s)) {
+        let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/), c = null;
+        if (m) c = pad2(m[1]) + '.' + pad2(m[2]) + '.' + m[3];
+        else if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) c = pad2(m[3]) + '.' + pad2(m[2]) + '.' + m[1];
+        if (c && validDate(c)) return [c, 'дата приведена к ДД.ММ.ГГГГ'];
+      }
+      break;
+    }
+    case 'money': { const n = toNum(s), k = 10 ** prec; if (!isNaN(n) && decimals(s) > prec) return [String(Math.round((n + Number.EPSILON) * k) / k), 'цена округлена до ' + prec + ' знаков']; break; }
+    case 'vat':
+      if (/^\d+\s*%$/.test(s)) return [s.replace(/\s*%$/, ''), 'убран знак %'];
+      if (/^без\s*ндс$/i.test(s) && s !== 'Без НДС') return ['Без НДС', 'ставка записана как «Без НДС»'];
+      break;
+    case 'codes': {
+      const v = [...new Set(i.raw.split(/[\s,;]+/).filter(Boolean))].join(' ');
+      return v !== i.raw ? [v, 'коды через один пробел, без повторов в ячейке'] : null;
+    }
+  }
+  if (i.raw !== s) return [s, 'убраны пробелы в начале и конце'];
+  return null;
+}
+
 function validateSheet(X, ws, sheetName) {
   const ref = X.utils.decode_range(ws['!ref'] || 'A1');
   const found = findNumberRow(X, ws, ref);
@@ -1240,7 +1278,11 @@ function validateSheet(X, ws, sheetName) {
   const title = n => { const h = col(n) != null ? headerText(X, ws, found.r, col(n)).replace(/\s*\*\s*/g, '').trim() : ''; return (spec.f[n] && spec.f[n].n) || h || 'Столбец ' + n; };
   const starred = n => col(n) != null && /\*/.test(headerText(X, ws, found.r, col(n)));
   const get = (r, n) => col(n) == null ? null : cellInfo(X, ws, r, col(n));
-  const push = (tone, r, n, msg, val) => issues.push({ tone, row: r + 1, n, where: n ? letter(n) + ' (' + n + ') · ' + title(n) : '', msg, val });
+  const addr = (r, n) => col(n) == null ? null : X.utils.encode_cell({ r, c: col(n) });
+  const push = (tone, r, n, msg, val) => issues.push({ tone, row: r + 1, n, addr: n ? addr(r, n) : null, where: n ? letter(n) + ' (' + n + ') · ' + title(n) : '', msg, val });
+  const fixes = new Map();
+  const fix = (r, n, i, val, why) => fixes.set(addr(r, n), { addr: addr(r, n), row: r + 1, where: letter(n) + ' (' + n + ') · ' + title(n), old: i.raw, val, why });
+  const cur = (r, n) => { const fx = fixes.get(addr(r, n)); if (fx) return fx.val; const i = get(r, n); return i ? i.s : ''; };
 
   let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [];
   let inherit = {};
@@ -1276,7 +1318,7 @@ function validateSheet(X, ws, sheetName) {
       const n = +k, f = spec.f[n];
       if (col(n) == null) continue;
       const atLevel = f.lvl === 'doc' ? newDoc : f.lvl === 'cargo' ? newCargo : isItem;
-      let i = get(r, n);
+      let i = get(r, n); const own = !!i;
       if (spec.perRow && !i && [1, 2, 6].includes(n) && inherit[n]) i = inherit[n];
       if (spec.perRow && i && [1, 2, 6].includes(n)) inherit[n] = i;
       if (!i) {
@@ -1290,6 +1332,7 @@ function validateSheet(X, ws, sheetName) {
       }
       if (!atLevel && f.lvl !== 'item') continue;
       checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
+      if (own) { const fv = fixValue(X, f, i, spec.prec || 2); if (fv) fix(r, n, i, fv[0], fv[1]); }
     }
 
     // условные правила
@@ -1319,6 +1362,11 @@ function validateSheet(X, ws, sheetName) {
           if (/^(без ндс|ққссиз|0)$/i.test(rate.s) && vat !== 0) push('err', r, S.vat, 'При ставке «' + rate.s + '» сумма НДС должна быть 0.', get(r, S.vat).raw);
           if (rate.s === '12' && !isNaN(cost) && Math.abs(vat - cost * 0.12) > 1) push('warn', r, S.vat, 'НДС 12% от стоимости поставки — ожидалось около ' + money(cost * 0.12) + '.', get(r, S.vat).raw);
         }
+        // исправления сумм — по уже исправленным значениям
+        const rateNow = cur(r, S.rate), vatI = get(r, S.vat), totI = get(r, S.total);
+        if (vatI && /^(без ндс|ққссиз|0)$/i.test(rateNow) && toNum(vatI.s) !== 0) fix(r, S.vat, vatI, '0', 'сумма НДС = 0 при ставке «' + rateNow + '»');
+        const c2 = toNum(cur(r, S.cost)), v2 = toNum(cur(r, S.vat));
+        if (totI && !isNaN(c2) && !isNaN(v2) && Math.abs(toNum(totI.s) - c2 - v2) > 0.05) fix(r, S.total, totI, String(+(c2 + v2).toFixed(2)), 'пересчитано: стоимость поставки + НДС');
         if (!isNaN(cost) && !isNaN(vat) && !isNaN(tot) && Math.abs(tot - cost - vat) > 0.05) push('warn', r, S.total, 'Должно быть «Стоимость поставки + НДС» = ' + money(cost + vat) + '.', get(r, S.total).raw);
       }
     }
@@ -1356,11 +1404,12 @@ function validateSheet(X, ws, sheetName) {
     const allOne = docSeq.every(d => d.v === '1'), seq = docSeq.every((d, i) => d.v === String(i + 1));
     if (!allOne && !seq) docSeq.forEach((d, i) => { if (d.v !== '1' && d.v !== String(i + 1)) push('warn', d.r, 1, 'П.п. документов: либо везде 1, либо 1, 2, 3… Здесь ожидалось ' + (i + 1) + '.', d.v); });
   }
-  const dups = [...codes].filter(([, rs]) => rs.length > 1).map(([code, rs]) => ({ code, rows: [...new Set(rs)], n: rs.length }));
+  // дубли между разными строками; повтор внутри одной ячейки отмечен отдельно и исправляется сам
+  const dups = [...codes].filter(([, rs]) => new Set(rs).size > 1).map(([code, rs]) => ({ code, rows: [...new Set(rs)], n: new Set(rs).size }));
   [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no)));
   if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
   issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
-  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max };
+  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max, fixes: [...fixes.values()] };
 }
 
 // Шаблон для загрузки ИКПУ: A — ИКПУ код, B — тип происхождения товара, без строки с номерами столбцов
@@ -1370,20 +1419,24 @@ function validateIkpu(X, ws, sheetName) {
   for (let r = ref.s.r; r <= Math.min(ref.e.r, ref.s.r + 10) && hr < 0; r++) { const a = cellInfo(X, ws, r, 0); if (a && /икпу/i.test(a.s)) hr = r; }
   if (hr < 0) return null;
   const fA = F('ИКПУ код', 'item', 1, 'ikpu'), fB = F('Тип происхождения товара', 'item', 1, 'enum', range(1, 4));
-  const issues = [], seen = new Map(); let rows = 0;
-  const push = (tone, r, c, f, msg, val) => issues.push({ tone, row: r + 1, n: c + 1, where: X.utils.encode_col(c) + ' · ' + f.n, msg, val });
+  const issues = [], seen = new Map(), fixes = []; let rows = 0;
+  const push = (tone, r, c, f, msg, val) => issues.push({ tone, row: r + 1, n: c + 1, addr: X.utils.encode_cell({ r, c }), where: X.utils.encode_col(c) + ' · ' + f.n, msg, val });
   for (let r = hr + 1; r <= ref.e.r; r++) {
     const a = cellInfo(X, ws, r, 0), b = cellInfo(X, ws, r, 1);
     if (!a && !b) continue;
     rows++;
     [[a, 0, fA], [b, 1, fB]].forEach(([i, c, f]) => {
       if (!i) push('err', r, c, f, 'Обязательное поле не заполнено.');
-      else checkValue(f, i, 2, (tone, msg) => push(tone, r, c, f, msg, i.raw));
+      else {
+        checkValue(f, i, 2, (tone, msg) => push(tone, r, c, f, msg, i.raw));
+        const fv = fixValue(X, f, i, 2);
+        if (fv) fixes.push({ addr: X.utils.encode_cell({ r, c }), row: r + 1, where: X.utils.encode_col(c) + ' · ' + f.n, old: i.raw, val: fv[0], why: fv[1] });
+      }
     });
     if (a) { const k = a.s.replace(/\s/g, ''); if (seen.has(k)) push('warn', r, 0, fA, 'Этот ИКПУ уже есть в строке ' + seen.get(k) + '.', a.raw); else seen.set(k, r + 1); }
   }
   if (!rows) issues.push({ tone: 'warn', row: hr + 2, where: '', msg: 'Под заголовком нет данных.' });
-  return { type: 'ikpu', name: 'Шаблон загрузки ИКПУ', sheet: sheetName, docs: rows, items: rows, rows, issues, dups: [], codes: 0 };
+  return { type: 'ikpu', name: 'Шаблон загрузки ИКПУ', sheet: sheetName, docs: rows, items: rows, rows, issues, dups: [], codes: 0, fixes };
 }
 
 async function checkExcel(file) {
@@ -1394,16 +1447,144 @@ async function checkExcel(file) {
   catch (e) { showError('Не удалось открыть файл: ' + e.message, 'Нужен файл .xlsx шаблона Didox.'); return; }
   const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
   if (!results.length) { showError('Не нашли шаблон в файле.', 'Ожидается строка с номерами столбцов 1, 2, 3… над данными, как в шаблонах Didox.'); return; }
+  lastExcel = { file, results };
   renderExcel(file.name, results);
 }
 
-function issueRow(tone, where, msg, val) {
+/* ----- исправленная копия: правим ячейки прямо в XML, чтобы сохранить оформление шаблона ----- */
+let lastExcel = null, JSZIP_P = null;
+function loadJSZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (!JSZIP_P) JSZIP_P = new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload = () => ok(window.JSZip); s.onerror = () => { JSZIP_P = null; fail(new Error('Не удалось загрузить модуль записи Excel. Проверьте интернет.')); };
+    document.head.append(s);
+  });
+  return JSZIP_P;
+}
+const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+const RNS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const PNS = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const CNS = 'http://schemas.openxmlformats.org/package/2006/content-types';
+const XMLNS = 'http://www.w3.org/XML/1998/namespace';
+const xesc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+async function buildFixed(file, results) {
+  const JSZip = await loadJSZip();
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const P = new DOMParser(), S = new XMLSerializer();
+  const read = async path => P.parseFromString(await zip.file(path).async('string'), 'application/xml');
+  const write = (path, doc) => zip.file(path, S.serializeToString(doc));
+  const wb = await read('xl/workbook.xml'), rels = await read('xl/_rels/workbook.xml.rels'), ct = await read('[Content_Types].xml');
+  const relEls = [...rels.getElementsByTagNameNS(PNS, 'Relationship')];
+  const target = {}; relEls.forEach(r => target[r.getAttribute('Id')] = r.getAttribute('Target'));
+  const sheetEls = [...wb.getElementsByTagNameNS(NS, 'sheet')], sheetPath = {};
+  sheetEls.forEach(sh => { const t = target[sh.getAttributeNS(RNS, 'id')]; if (t) sheetPath[sh.getAttribute('name')] = t.startsWith('/') ? t.slice(1) : 'xl/' + t; });
+
+  // подсветка: копия стиля ячейки + светло-зелёная заливка + текстовый формат (@)
+  let styleFor = sIdx => sIdx, st = null;
+  if (zip.file('xl/styles.xml')) {
+    st = await read('xl/styles.xml');
+    const fills = st.getElementsByTagNameNS(NS, 'fills')[0], xfs = st.getElementsByTagNameNS(NS, 'cellXfs')[0];
+    if (fills && xfs) {
+      const fill = st.createElementNS(NS, 'fill'), pf = st.createElementNS(NS, 'patternFill'), fg = st.createElementNS(NS, 'fgColor'), bg = st.createElementNS(NS, 'bgColor');
+      pf.setAttribute('patternType', 'solid'); fg.setAttribute('rgb', 'FFC6EFCE'); bg.setAttribute('indexed', '64');
+      pf.append(fg, bg); fill.append(pf); fills.append(fill);
+      const fillId = fills.getElementsByTagNameNS(NS, 'fill').length - 1; fills.setAttribute('count', fillId + 1);
+      const list = () => [...xfs.getElementsByTagNameNS(NS, 'xf')].filter(x => x.parentNode === xfs);
+      const memo = {};
+      styleFor = sIdx => {
+        if (memo[sIdx] != null) return memo[sIdx];
+        const x = (list()[sIdx] || list()[0]).cloneNode(true);
+        x.setAttribute('fillId', fillId); x.setAttribute('applyFill', '1'); x.setAttribute('numFmtId', '49'); x.setAttribute('applyNumberFormat', '1');
+        xfs.append(x); const id = list().length - 1; xfs.setAttribute('count', id + 1);
+        return (memo[sIdx] = id);
+      };
+    }
+  }
+
+  const log = [];
+  for (const res of results) {
+    const path = sheetPath[res.sheet];
+    if (!res.fixes.length || !path || !zip.file(path)) continue;
+    const doc = await read(path), cells = {};
+    [...doc.getElementsByTagNameNS(NS, 'c')].forEach(c => cells[c.getAttribute('r')] = c);
+    res.fixes.forEach(fx => {
+      const c = cells[fx.addr]; if (!c) return;
+      const sIdx = +(c.getAttribute('s') || 0);
+      while (c.firstChild) c.removeChild(c.firstChild);
+      c.setAttribute('t', 'inlineStr'); c.setAttribute('s', styleFor(sIdx));
+      const is = doc.createElementNS(NS, 'is'), t = doc.createElementNS(NS, 't');
+      t.setAttributeNS(XMLNS, 'xml:space', 'preserve'); t.textContent = fx.val; is.append(t); c.append(is);
+      log.push([res.sheet, fx.row, fx.where, fx.old, fx.val, fx.why]);
+    });
+    write(path, doc);
+  }
+  if (st) write('xl/styles.xml', st);
+
+  // calcChain ссылается на старые формулы — Excel пересоберёт его сам
+  if (zip.file('xl/calcChain.xml')) {
+    zip.remove('xl/calcChain.xml');
+    relEls.filter(r => /calcChain/.test(r.getAttribute('Target'))).forEach(r => r.parentNode.removeChild(r));
+    [...ct.getElementsByTagNameNS(CNS, 'Override')].filter(o => /calcChain/.test(o.getAttribute('PartName'))).forEach(o => o.parentNode.removeChild(o));
+  }
+
+  // лист «Исправления» с журналом
+  const names = sheetEls.map(sh => sh.getAttribute('name'));
+  let name = 'Исправления', k = 2; while (names.includes(name)) name = 'Исправления ' + k++;
+  const rows = [['Лист', 'Строка', 'Столбец · поле', 'Было', 'Стало', 'Что сделано'], ...log];
+  const cellX = (ref, v) => '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xesc(v) + '</t></is></c>';
+  const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="' + NS + '"><cols>' +
+    [14, 8, 42, 32, 32, 46].map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') +
+    '</cols><sheetData>' + rows.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => cellX(String.fromCharCode(65 + ci) + (ri + 1), v)).join('') + '</row>').join('') +
+    '</sheetData></worksheet>';
+  let part = 'xl/worksheets/fixlog.xml', n = 2; while (zip.file(part)) part = 'xl/worksheets/fixlog' + n++ + '.xml';
+  zip.file(part, xml);
+  const rid = 'rIdFixLog' + Date.now();
+  const rel = rels.createElementNS(PNS, 'Relationship');
+  rel.setAttribute('Id', rid); rel.setAttribute('Type', RNS + '/worksheet'); rel.setAttribute('Target', part.replace('xl/', ''));
+  rels.documentElement.append(rel);
+  const sh = wb.createElementNS(NS, 'sheet');
+  sh.setAttribute('name', name); sh.setAttribute('sheetId', Math.max(0, ...sheetEls.map(x => +x.getAttribute('sheetId') || 0)) + 1); sh.setAttributeNS(RNS, 'r:id', rid);
+  wb.getElementsByTagNameNS(NS, 'sheets')[0].append(sh);
+  const ov = ct.createElementNS(CNS, 'Override');
+  ov.setAttribute('PartName', '/' + part); ov.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml');
+  ct.documentElement.append(ov);
+  write('xl/workbook.xml', wb); write('xl/_rels/workbook.xml.rels', rels); write('[Content_Types].xml', ct);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
+}
+
+async function saveFile(name, blob) {
+  // внутри claude.ai файл отдаётся через возможность downloads, в обычном браузере — ссылкой
+  try {
+    const d = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+    if (d) { await d.save({ filename: name, data: blob }); return true; }
+  } catch (e) { if (e && e.code === 'declined') return false; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return true;
+}
+
+async function downloadFixed(btn) {
+  if (!lastExcel) return;
+  btn.classList.add('busy'); btn.disabled = true;
+  try {
+    const blob = await buildFixed(lastExcel.file, lastExcel.results);
+    const name = lastExcel.file.name.replace(/\.xlsx$/i, '') + ' (исправлено).xlsx';
+    if (await saveFile(name, blob)) toast('Исправленный шаблон готов');
+  } catch (e) { toast('Не удалось собрать файл'); console.error(e); }
+  btn.classList.remove('busy'); btn.disabled = false;
+}
+
+function issueRow(tone, where, msg, val, fx) {
   const c = el('div', 'cell ico multi iss');
   const sq = el('span', 'sq ' + TONE[tone]); sq.innerHTML = svg(ICON[tone]); sq.setAttribute('aria-hidden', 'true');
   const lbl = el('span', 'lbl');
   if (where) lbl.append(el('span', 'w', where));
   lbl.append(document.createTextNode(msg));
   if (val != null && val !== '') lbl.append(el('span', 'v', 'Значение: «' + (String(val).length > 120 ? String(val).slice(0, 120) + '…' : val) + '»'));
+  if (fx) lbl.append(el('span', 'v fixed', 'Исправится → «' + (fx.val.length > 120 ? fx.val.slice(0, 120) + '…' : fx.val) + '»'));
   c.append(sq, lbl); return c;
 }
 
@@ -1412,13 +1593,14 @@ function renderExcel(fname, results) {
   const LIMIT = 300; let report = ['Проверка: ' + fname];
   results.forEach(res => {
     const errs = res.issues.filter(i => i.tone === 'err'), warns = res.issues.filter(i => i.tone === 'warn');
+    const fxMap = new Map(res.fixes.map(f => [f.addr, f]));
     const box = el('div', 'hero appear');
     const head = el('div', 'kind'); const badge = el('span', 'badge'); badge.innerHTML = svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/>', 2);
     head.append(badge, el('b', null, res.name)); box.append(head);
     const dl = el('dl');
     (res.type === 'ikpu'
       ? [['Лист', res.sheet], ['Строк', res.rows], ['Ошибок', errs.length], ['Предупреждений', warns.length]]
-      : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]])
+      : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]).concat([['Исправится сам', res.fixes.length]])
       .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
     box.append(dl); out.append(box);
     report.push('', res.name + ' (лист ' + res.sheet + '): документов ' + res.docs + ', позиций ' + res.items + ', ошибок ' + (errs.length + res.dups.length) + ', предупреждений ' + warns.length);
@@ -1436,12 +1618,26 @@ function renderExcel(fname, results) {
     [['err', 'Ошибки', errs], ['warn', 'Предупреждения', warns]].forEach(([tone, t, list]) => {
       if (!list.length) return;
       out.append(secH(t + ' (' + list.length + ')'));
-      const g = group(); list.slice(0, LIMIT).forEach(i => g.append(issueRow(tone, 'Строка ' + i.row + (i.where ? ' · ' + i.where : ''), i.msg, i.val)));
+      const g = group(); list.slice(0, LIMIT).forEach(i => g.append(issueRow(tone, 'Строка ' + i.row + (i.where ? ' · ' + i.where : ''), i.msg, i.val, i.addr && fxMap.get(i.addr))));
       if (list.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (list.length - LIMIT) + ' — скопируйте отчёт целиком'));
       out.append(g);
       report.push('', t + ':'); list.forEach(i => report.push('- Строка ' + i.row + (i.where ? ', ' + i.where : '') + ': ' + i.msg + (i.val != null && i.val !== '' ? ' [' + i.val + ']' : '')));
     });
   });
+  const totalFixes = results.reduce((a, r) => a + r.fixes.length, 0);
+  if (totalFixes) {
+    out.append(secH('Будет исправлено автоматически (' + totalFixes + ')'));
+    const g = group();
+    results.forEach(res => res.fixes.slice(0, LIMIT).forEach(f => g.append(issueRow('ok', 'Строка ' + f.row + ' · ' + f.where, f.why + '.', f.old, f))));
+    if (totalFixes > LIMIT) g.append(el('div', 'more', 'и ещё — полный список будет на листе «Исправления»'));
+    out.append(g);
+    if (/\.xlsx$/i.test(fname)) {
+      const btn = el('button', 'btn-fill', 'Скачать исправленный шаблон'); btn.onclick = () => downloadFixed(btn);
+      out.insertBefore(btn, out.children[1] || null);
+      out.append(el('p', 'sec-f', 'В скачанной копии исправленные ячейки подсвечены зелёным, а на листе «Исправления» — что было и что стало. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
+    } else out.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
+    report.push('', 'Исправится автоматически: ' + totalFixes);
+  }
   const bar = el('div', 'jbar'); const b = el('button', 'link', 'Копировать отчёт'); b.onclick = () => copyText(report.join('\n')); bar.append(b);
   out.append(bar);
   out.append(el('p', 'sec-f', 'Проверяется заполнение по инструкции. Совпадение ИКПУ с единицей измерения, существование ИНН и ID районов проверяются только при загрузке в Didox.'));
