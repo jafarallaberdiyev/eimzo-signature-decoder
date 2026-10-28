@@ -1374,7 +1374,16 @@ function validateSheet(X, ws, sheetName) {
       const q = v(S.qty), pr = v(S.price), cost = v(S.cost), ex = S.excise ? v(S.excise) : NaN;
       if (!isNaN(q) && !isNaN(pr) && !isNaN(cost)) {
         const base = q * pr, withEx = base + (isNaN(ex) ? 0 : ex);
-        if (Math.abs(cost - base) > 0.05 && Math.abs(cost - withEx) > 0.05) push('warn', r, S.cost, 'Не сходится с «Количество × Цена»' + (isNaN(ex) ? '' : ' (+ акциз)') + ': ожидалось ' + money(isNaN(ex) ? base : withEx) + '.', get(r, S.cost).raw);
+        if (Math.abs(cost - base) > 0.05 && Math.abs(cost - withEx) > 0.05) {
+          // частый случай: цену округлили до копеек, а стоимость поставки — точная. Тогда точная цена = (стоимость − акциз) / количество
+          const prec = spec.prec || 2, k = 10 ** prec, exact = (cost - (isNaN(ex) ? 0 : ex)) / q, p2 = Math.round((exact + Number.EPSILON) * k) / k;
+          const priceI = get(r, S.price), rounded = q > 0 && Math.abs(pr - exact) <= 0.5 * 10 ** -decimals(priceI.s) + 1e-9;
+          const fits = Math.abs(p2 * q + (isNaN(ex) ? 0 : ex) - cost) <= 0.05;
+          let msg = 'Не сходится с «Количество × Цена»' + (isNaN(ex) ? '' : ' (+ акциз)') + ': ожидалось ' + money(isNaN(ex) ? base : withEx) + '.';
+          if (rounded && fits) { msg += ' Похоже, цена округлена: точная цена ' + p2 + '.'; fix(r, S.price, priceI, String(p2), 'цена уточнена: стоимость поставки / количество, до ' + prec + ' знаков'); }
+          else if (rounded) msg += ' Похоже, цена округлена, но с ' + prec + ' знаками после запятой точно не подобрать — проверьте количество или стоимость.';
+          push('warn', r, S.cost, msg, get(r, S.cost).raw);
+        }
       }
       if (S.rate) {
         const rate = get(r, S.rate), vat = v(S.vat), tot = v(S.total);
