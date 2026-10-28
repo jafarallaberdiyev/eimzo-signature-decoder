@@ -63,7 +63,8 @@ body{overflow-x:hidden}
   .side>*{flex-shrink:0}
   #dropzone{flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
   .side textarea{flex:1 1 auto;min-height:0;max-height:none;resize:none}
-  #out{min-height:0;overflow:auto;scrollbar-width:thin;padding-bottom:8px}
+  #out{min-height:0;overflow:auto;scrollbar-width:none;padding-bottom:8px}
+  #out::-webkit-scrollbar{display:none}
   #out>.sec-h:first-child,#out>.hero:first-child{margin-top:24px}
   .empty{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
   .cols .empty>*{width:100%;max-width:560px;margin-left:auto;margin-right:auto}
