@@ -137,6 +137,9 @@ textarea::placeholder{color:var(--ter)}
 textarea.ids{min-height:88px;max-height:30vh}
 .cell .lbl a{color:var(--tint-strong);text-decoration:none;white-space:nowrap}
 .cell .lbl .id{font:13px/1.35 var(--mono);overflow-wrap:anywhere}
+.iss .w{display:block;font-size:13px;color:var(--sec);margin-bottom:2px}
+.iss .v{display:block;font:12px/1.4 var(--mono);color:var(--sec);margin-top:3px;overflow-wrap:anywhere}
+.more{font-size:13px;color:var(--sec);padding:10px 16px}
 
 /* Карточка документа */
 .hero{margin:16px 16px 0;padding:18px 18px 16px;border-radius:16px;background:var(--cell);display:grid;gap:12px}
@@ -248,6 +251,17 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="updGo">Обновить статус</button>
    <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
+
+   <div class="sec-h">Проверка Excel-шаблона</div>
+   <div class="group" id="xlsZone">
+     <label class="cell tap ico" for="xls">
+       <span class="sq green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></svg></span>
+       <span class="lbl">Загрузить шаблон .xlsx</span>
+       <svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+     </label>
+     <input type="file" id="xls" accept=".xlsx,.xls" hidden>
+   </div>
+   <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
 
    <div class="sec-h">Оформление</div>
    <div class="group">
@@ -977,6 +991,7 @@ $('src').addEventListener('paste', () => setTimeout(() => runText($('src').value
 $('src').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runText($('src').value); });
 
 function readFile(f) {
+  if (/\.xlsx?$/i.test(f.name)) { checkExcel(f); return; }
   const rd = new FileReader();
   rd.onload = () => { const u = new Uint8Array(rd.result);
     if (u[0] === 0x30) { $('src').value = '(двоичный файл ' + f.name + ')'; runBytes(u); }
@@ -989,6 +1004,431 @@ const dz = $('dropzone');
 ['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('drop-over'); }));
 ['dragleave', 'drop'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove('drop-over'); }));
 dz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+/* ===== Проверка Excel-шаблонов по инструкции Didox ===== */
+const REGIONS = ['3', '6', '8', '10', '12', '14', '18', '22', '24', '26', '27', '30', '33', '35', '50'];
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => String(a + i));
+const PACKS = ['KIZ', 'NomUpak', 'IdentTransUpak'];
+
+// Поля по номеру столбца шаблона (строка с номерами 1, 2, 3…).
+// lvl: doc — первая строка документа, cargo — первая строка груза, item — каждая позиция.
+// req: 1 — обязательно, 'w' — обычно обязательно (предупреждение). t — тип значения.
+const F = (n, lvl, req, t, e) => ({ n, lvl, req, t, e });
+const SPECS = {
+  sf: {
+    name: 'Счёт-фактура', max: 73, item: 41, dupNo: 4,
+    mark: [61, 62, 63], qty: 52, prec: 2,
+    f: {
+      2: F('ID типа СФ', 'doc', 1, 'enum', ['0', '2', '3']),
+      3: F('ID типа односторонней СФ', 'doc', 0, 'enum', range(1, 13)),
+      4: F('Номер СФ', 'doc', 1, 'text'), 5: F('Дата СФ', 'doc', 1, 'date'),
+      6: F('Номер договора', 'doc', 1, 'text'), 7: F('Дата договора', 'doc', 1, 'date'),
+      8: F('Номер доверенности', 'doc', 0, 'text'), 9: F('Дата доверенности', 'doc', 0, 'date'),
+      11: F('ИНН по доверенности', 'doc', 0, 'inn'),
+      14: F('ИНН исполнителя', 'doc', 1, 'inn'), 28: F('ИНН заказчика', 'doc', 1, 'inn'),
+      43: F('ИНН комитента', 'item', 0, 'inn'),
+      45: F('Наименование товара', 'item', 1, 'text'), 46: F('ИКПУ', 'item', 1, 'ikpu'),
+      47: F('Штрих-код', 'item', 0, 'digits'), 49: F('Код ед. измерения', 'item', 1, 'digits'),
+      50: F('Базовая цена (Фарм)', 'item', 0, 'num'), 51: F('Наценка (Фарм)', 'item', 0, 'num'),
+      52: F('Количество', 'item', 1, 'pos'), 53: F('Цена', 'item', 1, 'money'),
+      54: F('Ставка акциза', 'item', 0, 'num'), 55: F('Сумма акциза', 'item', 0, 'num'),
+      56: F('Стоимость поставки', 'item', 1, 'num'), 57: F('Ставка НДС', 'item', 1, 'vat'),
+      58: F('Сумма НДС', 'item', 1, 'num'), 59: F('Стоимость с НДС', 'item', 1, 'num'),
+      60: F('Код льготы', 'item', 0, 'digits'),
+      61: F('Тип товара (маркировка)', 'item', 0, 'enum', range(1, 7)),
+      62: F('Тип упаковки (маркировка)', 'item', 0, 'enum', PACKS),
+      63: F('Коды маркировок', 'item', 0, 'codes'),
+      64: F('ID склада', 'item', 0, 'digits'), 65: F('Происхождение товара', 'item', 1, 'enum', range(1, 4)),
+      68: F('Период СФ от', 'doc', 0, 'date'), 69: F('Период СФ до', 'doc', 0, 'date'),
+      73: F('Отпуск лекарств', 'item', 0, 'enum', ['1', '2'])
+    },
+    sums: { qty: 52, price: 53, excise: 55, cost: 56, rate: 57, vat: 58, total: 59 }
+  },
+  ttn: {
+    name: 'ТТН', max: 63, item: 50, cargo: 33, dupNo: 3, qty: 55, prec: 5,
+    f: {
+      2: F('ID типа перевозки', 'doc', 1, 'enum', ['1', '2', '3']),
+      3: F('Номер ТТН', 'doc', 1, 'text'), 4: F('Дата ТТН', 'doc', 1, 'date'),
+      5: F('Номер договора', 'doc', 1, 'text'), 6: F('Дата договора', 'doc', 1, 'date'),
+      7: F('ИНН/ПИНФЛ грузоотправителя', 'doc', 1, 'inn'), 8: F('Код филиала грузоотправителя', 'doc', 0, 'digits'),
+      9: F('ИНН/ПИНФЛ грузополучателя', 'doc', 1, 'inn'), 10: F('Код филиала грузополучателя', 'doc', 0, 'digits'),
+      11: F('ИНН/ПИНФЛ экспедитора', 'doc', 1, 'inn'), 13: F('ИНН/ПИНФЛ грузоперевозчика', 'doc', 1, 'inn'),
+      15: F('ИНН/ПИНФЛ клиента', 'doc', 0, 'inn'), 19: F('ИНН/ПИНФЛ заказчика', 'doc', 0, 'inn'),
+      23: F('ID типа транспорта', 'doc', 1, 'enum', ['1']),
+      24: F('Номер автомобиля', 'doc', 1, 'text'), 25: F('Модель автомобиля', 'doc', 1, 'text'),
+      26: F('ИНН/ПИНФЛ владельца транспорта', 'doc', 0, 'inn'),
+      31: F('ПИНФЛ водителя', 'doc', 1, 'pinfl'), 32: F('ПИНФЛ ответственного лица', 'doc', 1, 'pinfl'),
+      34: F('Область погрузки', 'cargo', 1, 'enum', REGIONS), 35: F('Район погрузки', 'cargo', 1, 'digits'),
+      36: F('Улица, дом погрузки', 'cargo', 1, 'text'),
+      37: F('Широта погрузки', 'cargo', 0, 'coord'), 38: F('Долгота погрузки', 'cargo', 0, 'coord'),
+      39: F('ПИНФЛ ответственного грузоотправителя', 'cargo', 0, 'pinfl'),
+      40: F('Область доставки', 'cargo', 1, 'enum', REGIONS), 41: F('Район доставки', 'cargo', 1, 'digits'),
+      42: F('Улица, дом доставки', 'cargo', 1, 'text'),
+      43: F('Широта доставки', 'cargo', 0, 'coord'), 44: F('Долгота доставки', 'cargo', 0, 'coord'),
+      45: F('ПИНФЛ ответственного грузополучателя', 'cargo', 0, 'pinfl'),
+      51: F('ИНН/ПИНФЛ комитента', 'item', 0, 'inn'),
+      52: F('ИКПУ', 'item', 1, 'ikpu'), 53: F('Наименование товара', 'item', 1, 'text'),
+      54: F('Код ед. измерения', 'item', 1, 'digits'), 55: F('Количество', 'item', 1, 'pos'),
+      56: F('Цена', 'item', 1, 'money'), 57: F('Сумма без НДС', 'item', 1, 'num'),
+      58: F('Брутто', 'item', 1, 'num'), 59: F('Нетто', 'item', 1, 'num'),
+      60: F('Стоимость доставки', 'doc', 1, 'num'), 61: F('Стоимость доставки', 'doc', 1, 'num'), 62: F('Стоимость доставки', 'doc', 1, 'num'),
+      63: F('Данные для Uzum Market', 'doc', 0, 'text')
+    },
+    sums: { qty: 55, price: 56, cost: 57 }, weight: [58, 59]
+  },
+  hybrid: {
+    name: 'Гибридная ЭСФ', max: 71, item: 44, dupNo: 3,
+    mark: [62, 63, 64], qty: 53, prec: 5,
+    f: {
+      2: F('ID подтипа гибридной ЭСФ', 'doc', 1, 'enum', ['0', '1', '4']),
+      3: F('Номер СФ', 'doc', 1, 'text'), 4: F('Дата СФ', 'doc', 1, 'date'),
+      5: F('Номер договора', 'doc', 1, 'text'), 6: F('Дата договора', 'doc', 1, 'date'),
+      7: F('ИНН поставщика', 'doc', 1, 'inn'), 8: F('Код филиала поставщика', 'doc', 0, 'digits'),
+      9: F('ИНН покупателя', 'doc', 1, 'inn'), 10: F('Код филиала покупателя', 'doc', 0, 'digits'),
+      11: F('ИНН экспедитора', 'doc', 'w', 'inn'), 13: F('ИНН грузоперевозчика', 'doc', 'w', 'inn'),
+      15: F('ИНН клиента', 'doc', 0, 'inn'), 18: F('Дата договора с клиентом', 'doc', 0, 'date'),
+      19: F('ИНН заказчика', 'doc', 0, 'inn'), 22: F('Дата договора с заказчиком', 'doc', 0, 'date'),
+      23: F('ID типа транспорта', 'doc', 1, 'enum', ['1']),
+      24: F('Номер автомобиля', 'doc', 1, 'text'), 25: F('Модель автомобиля', 'doc', 1, 'text'),
+      26: F('ИНН/ПИНФЛ владельца транспорта', 'doc', 0, 'inn'),
+      31: F('ПИНФЛ водителя', 'doc', 1, 'pinfl'), 32: F('ПИНФЛ ответственного лица', 'doc', 1, 'pinfl'),
+      33: F('Область погрузки', 'doc', 1, 'enum', REGIONS), 34: F('Район погрузки', 'doc', 1, 'digits'), 35: F('Улица, дом погрузки', 'doc', 1, 'text'),
+      36: F('Область доставки', 'doc', 1, 'enum', REGIONS), 37: F('Район доставки', 'doc', 1, 'digits'), 38: F('Улица, дом доставки', 'doc', 1, 'text'),
+      45: F('ИНН/ПИНФЛ комитента', 'item', 0, 'inn'),
+      46: F('ИКПУ', 'item', 1, 'ikpu'), 47: F('Наименование товара', 'item', 1, 'text'),
+      48: F('Штрих-код', 'item', 0, 'digits'), 50: F('Код ед. измерения', 'item', 1, 'digits'),
+      51: F('Базовая цена (Фарм)', 'item', 0, 'num'), 52: F('Наценка (Фарм)', 'item', 0, 'num'),
+      53: F('Количество', 'item', 1, 'pos'), 54: F('Цена', 'item', 1, 'money'),
+      55: F('Ставка акциза', 'item', 0, 'num'), 56: F('Сумма акциза', 'item', 0, 'num'),
+      57: F('Стоимость поставки', 'item', 1, 'num'), 58: F('Ставка НДС', 'item', 1, 'vat'),
+      59: F('Сумма НДС', 'item', 1, 'num'), 60: F('Стоимость с НДС', 'item', 1, 'num'),
+      61: F('Код льготы', 'item', 0, 'digits'),
+      62: F('Тип товара (маркировка)', 'item', 0, 'enum', range(1, 7)),
+      63: F('Тип упаковки (маркировка)', 'item', 0, 'enum', PACKS),
+      64: F('Коды маркировок', 'item', 0, 'codes'),
+      65: F('Происхождение товара', 'item', 1, 'enum', range(1, 4)),
+      66: F('ИНН/ПИНФЛ отпустившего товар', 'item', 0, 'inn'),
+      67: F('Стоимость доставки', 'doc', 0, 'num'), 68: F('Стоимость доставки', 'doc', 0, 'num'),
+      69: F('Брутто', 'item', 0, 'num'), 70: F('Нетто', 'item', 0, 'num'),
+      71: F('Отпуск лекарств', 'item', 0, 'enum', ['1', '2'])
+    },
+    sums: { qty: 53, price: 54, excise: 56, cost: 57, rate: 58, vat: 59, total: 60 }, weight: [69, 70]
+  },
+  free: {
+    name: 'Произвольный документ', max: 12, perRow: true,
+    f: {
+      1: F('Номер документа', 'doc', 1, 'text'), 2: F('Дата документа', 'doc', 1, 'date'),
+      3: F('Номер договора', 'doc', 0, 'text'), 4: F('Дата договора', 'doc', 0, 'date'),
+      5: F('Название документа', 'doc', 0, 'text'), 6: F('ID подтипа документа', 'doc', 1, 'enum', range(1, 8)),
+      9: F('ИНН/ПИНФЛ отправителя', 'doc', 1, 'inn'), 10: F('Код филиала отправителя', 'doc', 0, 'digits'),
+      11: F('ИНН/ПИНФЛ получателя', 'doc', 1, 'inn'), 12: F('Код филиала получателя', 'doc', 0, 'digits')
+    }
+  }
+};
+const STRICT = { inn: 1, pinfl: 1, ikpu: 1, digits: 1, enum: 1 }; // ID, коды, ИНН — без пробелов
+
+let XLSX_P = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!XLSX_P) XLSX_P = new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => ok(window.XLSX); s.onerror = () => { XLSX_P = null; fail(new Error('Не удалось загрузить модуль чтения Excel. Проверьте интернет.')); };
+    document.head.append(s);
+  });
+  return XLSX_P;
+}
+
+function cellInfo(X, ws, r, c) {
+  const cell = ws[X.utils.encode_cell({ r, c })];
+  if (!cell || cell.v == null || cell.v === '') return null;
+  const isDate = cell.t === 'd' || (cell.t === 'n' && cell.z && X.SSF.is_date(cell.z));
+  // у чисел берём само значение: отображение (cell.w) зависит от формата ячейки
+  const raw = cell.t === 'n' && !isDate ? String(cell.v) : cell.t === 's' ? String(cell.v) : (cell.w != null ? String(cell.w) : String(cell.v));
+  return { raw, s: raw.trim(), num: cell.t === 'n', isDate, v: cell.v };
+}
+function headerText(X, ws, r, c) {
+  for (let k = r - 1; k >= Math.max(0, r - 3); k--) { const i = cellInfo(X, ws, k, c); if (i && !/^\d+$/.test(i.s)) return i.s.replace(/\s+/g, ' '); }
+  return '';
+}
+function findNumberRow(X, ws, ref) {
+  for (let r = ref.s.r; r <= Math.min(ref.e.r, ref.s.r + 40); r++) {
+    const map = {}; let last = 0, n = 0, ok = true;
+    for (let c = ref.s.c; c <= ref.e.c; c++) {
+      const i = cellInfo(X, ws, r, c); if (!i) continue;
+      if (!/^\d{1,3}$/.test(i.s)) { ok = false; break; }
+      const v = +i.s; if (v <= last) { ok = false; break; }
+      map[v] = c; last = v; n++;
+    }
+    if (ok && n >= 8 && map[1] != null && map[2] != null) return { r, map, max: last };
+  }
+  return null;
+}
+function guessType(found, ws, X) {
+  const head = []; for (let r = 0; r < found.r; r++) for (const c of Object.values(found.map)) { const i = cellInfo(X, ws, r, c); if (i) head.push(i.s.toLowerCase()); }
+  const h = head.join(' | ');
+  if (found.max === 12 || /подтип документа|произвольн/.test(h) && found.max < 20) return 'free';
+  if (found.max === 73) return 'sf';
+  if (found.max === 63) return 'ttn';
+  if (found.max === 71) return 'hybrid';
+  if (/гибрид/.test(h)) return 'hybrid';
+  if (/перевоз|погрузк/.test(h)) return found.max > 66 ? 'hybrid' : 'ttn';
+  return found.max > 40 ? 'sf' : 'free';
+}
+
+const toNum = s => { const t = String(s).replace(/\s/g, '').replace(',', '.'); return /^-?\d+(\.\d+)?$/.test(t) ? +t : NaN; };
+const decimals = s => { const m = String(s).replace(',', '.').match(/\.(\d+)$/); return m ? m[1].length : 0; };
+function validDate(s) {
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/); if (!m) return false;
+  const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+  return d.getUTCDate() === +m[1] && d.getUTCMonth() === +m[2] - 1 && +m[3] > 1990 && +m[3] < 2100;
+}
+
+function checkValue(f, i, prec, add) {
+  const s = i.s;
+  if (STRICT[f.t] && i.raw !== s) add('err', 'Лишние пробелы в начале или конце — в ID, кодах и ИНН их быть не должно.');
+  if (STRICT[f.t] && /\s/.test(s) && f.t !== 'codes') add('err', 'Пробел внутри значения — в ID, кодах и ИНН его быть не должно.');
+  const clean = s.replace(/\s/g, '');
+  switch (f.t) {
+    case 'inn':
+      if (!/^\d+$/.test(clean)) add('err', 'ИНН/ПИНФЛ должен состоять только из цифр.');
+      else if (clean.length !== 9 && clean.length !== 14) add('err', 'Нужно 9 цифр (ИНН) или 14 цифр (ПИНФЛ), а здесь ' + clean.length + '.');
+      else if (i.num && clean.length === 14) add('warn', 'ПИНФЛ записан числом — сделайте ячейку текстовой, иначе Excel может исказить значение.');
+      break;
+    case 'pinfl':
+      if (!/^\d{14}$/.test(clean)) add('err', 'ПИНФЛ — ровно 14 цифр' + (/^\d+$/.test(clean) ? ', а здесь ' + clean.length + '.' : '.'));
+      break;
+    case 'ikpu':
+      if (!/^\d+$/.test(clean)) add('err', 'ИКПУ — только цифры, без названия.');
+      else if (clean.length !== 17) add('err', 'ИКПУ — 17 цифр, а здесь ' + clean.length + (i.num && clean.length === 16 ? '. Похоже, ячейка числовая и Excel убрал ведущий 0 — сделайте её текстовой.' : '.'));
+      break;
+    case 'digits':
+      if (!/^\d+$/.test(clean)) add('err', 'Должны быть только цифры.');
+      break;
+    case 'enum':
+      if (!f.e.some(x => x.toLowerCase() === clean.toLowerCase())) add('err', 'Недопустимое значение. Можно: ' + f.e.join(', ') + '.');
+      break;
+    case 'date':
+      if (i.isDate) add('err', 'Дата в формате даты Excel — нужен Текстовый формат ячейки (ДД.ММ.ГГГГ).');
+      else if (!validDate(s)) add('err', 'Дата должна быть текстом ДД.ММ.ГГГГ, например 01.07.2025.');
+      break;
+    case 'pos': case 'num': case 'money': case 'coord': {
+      const n = toNum(s);
+      if (isNaN(n)) { add('err', 'Должно быть число.'); break; }
+      if (f.t !== 'coord' && n < 0) add('err', 'Не может быть отрицательным.');
+      if (f.t === 'pos' && n <= 0) add('err', 'Должно быть больше нуля.');
+      if (f.t === 'money' && decimals(s) > prec) add('err', 'После запятой не больше ' + prec + ' знаков — округлите.');
+      break;
+    }
+    case 'vat':
+      if (/%/.test(s)) add('err', 'Ставка без знака процента: 12, 0 или «Без НДС».');
+      else if (!/^(без ндс|ққссиз|0|12)$/i.test(s)) add('err', 'Ставка НДС: «Без НДС», 0 или 12.');
+      break;
+  }
+}
+
+function validateSheet(X, ws, sheetName) {
+  const ref = X.utils.decode_range(ws['!ref'] || 'A1');
+  const found = findNumberRow(X, ws, ref);
+  if (!found) return null;
+  const type = guessType(found, ws, X), spec = SPECS[type];
+  const issues = [], codes = new Map(), docNos = new Map();
+  const col = n => found.map[n];
+  const letter = n => col(n) != null ? X.utils.encode_col(col(n)) : '?';
+  const title = n => { const h = col(n) != null ? headerText(X, ws, found.r, col(n)).replace(/\s*\*\s*/g, '').trim() : ''; return (spec.f[n] && spec.f[n].n) || h || 'Столбец ' + n; };
+  const starred = n => col(n) != null && /\*/.test(headerText(X, ws, found.r, col(n)));
+  const get = (r, n) => col(n) == null ? null : cellInfo(X, ws, r, col(n));
+  const push = (tone, r, n, msg, val) => issues.push({ tone, row: r + 1, n, where: n ? letter(n) + ' (' + n + ') · ' + title(n) : '', msg, val });
+
+  let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [];
+  let inherit = {};
+  for (let r = found.r + 1; r <= ref.e.r; r++) {
+    const filled = Object.keys(found.map).some(n => get(r, +n));
+    if (!filled) continue;
+    rows++;
+    const a = get(r, 1);
+    let newDoc = spec.perRow || !!a;
+    if (!spec.perRow && !a && docStartRow < 0) { push('err', r, 1, 'Первая строка с данными без п.п. документа — укажите номер в столбце A.'); newDoc = true; }
+    if (newDoc) {
+      docs++; docStartRow = r; pos = 0; cargo = 0;
+      if (!spec.perRow && a) { docSeq.push({ r, v: a.s }); if (!/^\d+$/.test(a.s)) push('err', r, 1, 'П.п. документа — целое число.', a.raw); }
+    }
+    const newCargo = spec.cargo && (newDoc || !!get(r, spec.cargo));
+    if (spec.cargo && newCargo) {
+      const g = get(r, spec.cargo); cargo++;
+      if (!g) push('err', r, spec.cargo, 'Не указан п.п. груза в первой строке ТТН.');
+      else if (g.s !== String(cargo)) push('warn', r, spec.cargo, 'П.п. грузов идут по порядку 1, 2, 3… — ожидалось ' + cargo + '.', g.raw);
+    }
+    const itemFields = Object.keys(spec.f).filter(n => spec.f[n].lvl === 'item');
+    const ttnOnly = type === 'sf' && get(r, 71) && !itemFields.some(n => get(r, +n));
+    const isItem = !spec.perRow && !ttnOnly && (newDoc || itemFields.some(n => get(r, +n)) || !!get(r, spec.item));
+    if (isItem) {
+      items++; pos++;
+      const p = get(r, spec.item);
+      if (!p) push('err', r, spec.item, 'Не указан п.п. товара.');
+      else if (p.s !== String(pos)) push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
+    }
+
+    // поля
+    for (const k of Object.keys(spec.f)) {
+      const n = +k, f = spec.f[n];
+      if (col(n) == null) continue;
+      const atLevel = f.lvl === 'doc' ? newDoc : f.lvl === 'cargo' ? newCargo : isItem;
+      let i = get(r, n);
+      if (spec.perRow && !i && [1, 2, 6].includes(n) && inherit[n]) i = inherit[n];
+      if (spec.perRow && i && [1, 2, 6].includes(n)) inherit[n] = i;
+      if (!i) {
+        if (!atLevel) continue;
+        let req = f.req || (starred(n) ? 1 : 0);
+        if (type === 'sf' && n === 28 && get(docStartRow, 3)) req = 0;              // односторонняя СФ
+        if (type === 'ttn' && (n === 5 || n === 6)) { const t = get(docStartRow, 2); if (t && t.s === '1') req = 0; }
+        if (req === 1) push('err', r, n, 'Обязательное поле не заполнено.');
+        else if (req === 'w') push('warn', r, n, 'Поле не заполнено — обычно оно нужно.');
+        continue;
+      }
+      if (!atLevel && f.lvl !== 'item') continue;
+      checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
+    }
+
+    // условные правила
+    if (type === 'sf' && newDoc) {
+      const t = get(r, 2);
+      if (t && t.s === '2' && !get(r, 72)) push('warn', r, 72, 'Для типа «Возмещение расходов» обычно указывают ID входящей СФ.');
+    }
+    if (type === 'ttn' && newDoc) {
+      const t = get(r, 2);
+      if (t && t.s === '1' && (get(r, 5) || get(r, 6))) push('warn', r, 5, 'При типе «Со склада на склад» данные договора не заполняются.');
+      const g = get(r, 9);
+      if (g && g.s === '309376127' && !get(r, 63)) push('warn', r, 63, 'Грузополучатель — Uzum Market: заполните столбец 63.');
+    }
+    if (spec.dupNo && newDoc) { const d = get(r, spec.dupNo); if (d) { if (!docNos.has(d.s)) docNos.set(d.s, []); docNos.get(d.s).push(r + 1); } }
+
+    // суммы
+    if (isItem && spec.sums) {
+      const S = spec.sums, v = n => { const i = get(r, n); return i ? toNum(i.s) : NaN; };
+      const q = v(S.qty), pr = v(S.price), cost = v(S.cost), ex = S.excise ? v(S.excise) : NaN;
+      if (!isNaN(q) && !isNaN(pr) && !isNaN(cost)) {
+        const base = q * pr, withEx = base + (isNaN(ex) ? 0 : ex);
+        if (Math.abs(cost - base) > 0.05 && Math.abs(cost - withEx) > 0.05) push('warn', r, S.cost, 'Не сходится с «Количество × Цена»' + (isNaN(ex) ? '' : ' (+ акциз)') + ': ожидалось ' + money(isNaN(ex) ? base : withEx) + '.', get(r, S.cost).raw);
+      }
+      if (S.rate) {
+        const rate = get(r, S.rate), vat = v(S.vat), tot = v(S.total);
+        if (rate && !isNaN(vat)) {
+          if (/^(без ндс|ққссиз|0)$/i.test(rate.s) && vat !== 0) push('err', r, S.vat, 'При ставке «' + rate.s + '» сумма НДС должна быть 0.', get(r, S.vat).raw);
+          if (rate.s === '12' && !isNaN(cost) && Math.abs(vat - cost * 0.12) > 1) push('warn', r, S.vat, 'НДС 12% от стоимости поставки — ожидалось около ' + money(cost * 0.12) + '.', get(r, S.vat).raw);
+        }
+        if (!isNaN(cost) && !isNaN(vat) && !isNaN(tot) && Math.abs(tot - cost - vat) > 0.05) push('warn', r, S.total, 'Должно быть «Стоимость поставки + НДС» = ' + money(cost + vat) + '.', get(r, S.total).raw);
+      }
+    }
+    if (isItem && spec.weight) {
+      const b = get(r, spec.weight[0]), nt = get(r, spec.weight[1]);
+      if (b && nt && toNum(nt.s) > toNum(b.s)) push('warn', r, spec.weight[1], 'Нетто больше брутто.', nt.raw);
+    }
+
+    // маркировка
+    if (isItem && spec.mark) {
+      const [mt, mp, mc] = spec.mark, T = get(r, mt), P = get(r, mp), C = get(r, mc);
+      if (T || P || C) {
+        if (!T) push('err', r, mt, 'Заполнена маркировка, но не указан тип товара (1–7).');
+        if (!P) push('err', r, mp, 'Заполнена маркировка, но не указан тип упаковки (KIZ, NomUpak, IdentTransUpak).');
+        if (!C) push('err', r, mc, 'Указан тип маркировки, но нет кодов.');
+      }
+      if (C) {
+        const list = C.raw.split(/[\s,;]+/).filter(Boolean);
+        if (/[,;]/.test(C.raw)) push('err', r, mc, 'Коды маркировок разделяются пробелом, а не запятой или точкой с запятой.');
+        const seen = new Set();
+        list.forEach(code => {
+          if (seen.has(code)) push('err', r, mc, 'Код повторяется в этой же ячейке.', code); seen.add(code);
+          if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(code)) push('err', r, mc, 'В коде кириллица — похоже, код вводили не в той раскладке.', code);
+          else if (code.length < 8) push('warn', r, mc, 'Слишком короткий код маркировки.', code);
+          if (!codes.has(code)) codes.set(code, []); codes.get(code).push(r + 1);
+        });
+        const q = get(r, spec.qty);
+        if (P && P.s === 'KIZ' && q && !isNaN(toNum(q.s)) && toNum(q.s) !== list.length) push('warn', r, mc, 'Для KIZ число кодов обычно равно количеству: кодов ' + list.length + ', количество ' + q.s + '.');
+      }
+    }
+  }
+
+  // п.п. документов: все единицы или 1, 2, 3…
+  if (docSeq.length > 1) {
+    const allOne = docSeq.every(d => d.v === '1'), seq = docSeq.every((d, i) => d.v === String(i + 1));
+    if (!allOne && !seq) docSeq.forEach((d, i) => { if (d.v !== '1' && d.v !== String(i + 1)) push('warn', d.r, 1, 'П.п. документов: либо везде 1, либо 1, 2, 3… Здесь ожидалось ' + (i + 1) + '.', d.v); });
+  }
+  const dups = [...codes].filter(([, rs]) => rs.length > 1).map(([code, rs]) => ({ code, rows: [...new Set(rs)], n: rs.length }));
+  [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => push('warn', rs[1] - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '.', no));
+  if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
+  issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
+  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max };
+}
+
+async function checkExcel(file) {
+  const out = $('out'); out.textContent = ''; out.scrollTop = 0;
+  out.append(secH('Проверка Excel')); const g = group(); g.append(iconRow('info', 'info', 'Читаем ' + file.name + '…')); out.append(g);
+  let X, wb;
+  try { X = await loadXLSX(); wb = X.read(await file.arrayBuffer(), { type: 'array' }); }
+  catch (e) { showError('Не удалось открыть файл: ' + e.message, 'Нужен файл .xlsx шаблона Didox.'); return; }
+  const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n)).filter(Boolean);
+  if (!results.length) { showError('Не нашли шаблон в файле.', 'Ожидается строка с номерами столбцов 1, 2, 3… над данными, как в шаблонах Didox.'); return; }
+  renderExcel(file.name, results);
+}
+
+function issueRow(tone, where, msg, val) {
+  const c = el('div', 'cell ico multi iss');
+  const sq = el('span', 'sq ' + TONE[tone]); sq.innerHTML = svg(ICON[tone]); sq.setAttribute('aria-hidden', 'true');
+  const lbl = el('span', 'lbl');
+  if (where) lbl.append(el('span', 'w', where));
+  lbl.append(document.createTextNode(msg));
+  if (val != null && val !== '') lbl.append(el('span', 'v', 'Значение: «' + (String(val).length > 120 ? String(val).slice(0, 120) + '…' : val) + '»'));
+  c.append(sq, lbl); return c;
+}
+
+function renderExcel(fname, results) {
+  const out = $('out'); out.textContent = ''; out.scrollTop = 0;
+  const LIMIT = 300; let report = ['Проверка: ' + fname];
+  results.forEach(res => {
+    const errs = res.issues.filter(i => i.tone === 'err'), warns = res.issues.filter(i => i.tone === 'warn');
+    const box = el('div', 'hero appear');
+    const head = el('div', 'kind'); const badge = el('span', 'badge'); badge.innerHTML = svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/>', 2);
+    head.append(badge, el('b', null, res.name)); box.append(head);
+    const dl = el('dl');
+    [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]
+      .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
+    box.append(dl); out.append(box);
+    report.push('', res.name + ' (лист ' + res.sheet + '): документов ' + res.docs + ', позиций ' + res.items + ', ошибок ' + (errs.length + res.dups.length) + ', предупреждений ' + warns.length);
+
+    if (!errs.length && !warns.length && !res.dups.length) {
+      const g = group(); g.style.marginTop = '16px'; g.append(iconRow('ok', 'ok', 'Ошибок не найдено. Шаблон заполнен по инструкции.')); out.append(g);
+    }
+    if (res.dups.length) {
+      out.append(secH('Дубли кодов маркировки (' + res.dups.length + ')'));
+      const g = group(); res.dups.slice(0, LIMIT).forEach(d => g.append(issueRow('err', 'Строки ' + d.rows.join(', '), 'Код встречается ' + d.n + ' раза — каждый код маркировки должен быть уникальным.', d.code)));
+      if (res.dups.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.dups.length - LIMIT)));
+      out.append(g);
+      report.push('', 'Дубли маркировки:'); res.dups.forEach(d => report.push('- ' + d.code + ' — строки ' + d.rows.join(', ')));
+    }
+    [['err', 'Ошибки', errs], ['warn', 'Предупреждения', warns]].forEach(([tone, t, list]) => {
+      if (!list.length) return;
+      out.append(secH(t + ' (' + list.length + ')'));
+      const g = group(); list.slice(0, LIMIT).forEach(i => g.append(issueRow(tone, 'Строка ' + i.row + (i.where ? ' · ' + i.where : ''), i.msg, i.val)));
+      if (list.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (list.length - LIMIT) + ' — скопируйте отчёт целиком'));
+      out.append(g);
+      report.push('', t + ':'); list.forEach(i => report.push('- Строка ' + i.row + (i.where ? ', ' + i.where : '') + ': ' + i.msg + (i.val != null && i.val !== '' ? ' [' + i.val + ']' : '')));
+    });
+  });
+  const bar = el('div', 'jbar'); const b = el('button', 'link', 'Копировать отчёт'); b.onclick = () => copyText(report.join('\n')); bar.append(b);
+  out.append(bar);
+  out.append(el('p', 'sec-f', 'Проверяется заполнение по инструкции. Совпадение ИКПУ с единицей измерения, существование ИНН и ID районов проверяются только при загрузке в Didox.'));
+  if (window.bgBurst) window.bgBurst();
+  const total = results.reduce((a, r) => a + r.issues.filter(i => i.tone === 'err').length + r.dups.length, 0);
+  toast(total ? 'Найдено ошибок: ' + total : 'Ошибок не найдено');
+  if (!matchMedia('(min-width:1000px)').matches) out.firstElementChild.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('xls').addEventListener('change', e => { if (e.target.files[0]) checkExcel(e.target.files[0]); e.target.value = ''; });
+const xz = $('xlsZone');
+['dragenter', 'dragover'].forEach(t => xz.addEventListener(t, e => { e.preventDefault(); xz.classList.add('drop-over'); }));
+['dragleave', 'drop'].forEach(t => xz.addEventListener(t, e => { e.preventDefault(); xz.classList.remove('drop-over'); }));
+xz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) checkExcel(f); });
 
 /* ===== Обновление статуса документа в GoodSign ===== */
 const UPD_URL = 'https://api.goodsign.biz/v1/documents/search/update/';
