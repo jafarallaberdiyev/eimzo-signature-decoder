@@ -261,7 +261,7 @@ body.still .blob{animation-play-state:paused}
      </label>
      <input type="file" id="xls" accept=".xlsx,.xls" hidden>
    </div>
-   <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
+   <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ, загрузка ИКПУ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
 
    <div class="sec-h">Оформление</div>
    <div class="group">
@@ -1024,7 +1024,7 @@ const SPECS = {
       4: F('Номер СФ', 'doc', 1, 'text'), 5: F('Дата СФ', 'doc', 1, 'date'),
       6: F('Номер договора', 'doc', 1, 'text'), 7: F('Дата договора', 'doc', 1, 'date'),
       8: F('Номер доверенности', 'doc', 0, 'text'), 9: F('Дата доверенности', 'doc', 0, 'date'),
-      11: F('ИНН по доверенности', 'doc', 0, 'inn'),
+      11: F('ИНН по доверенности', 'doc', 0, 'inn'), 12: F('Товар отпустил (ИНН/ПИНФЛ)', 'doc', 0, 'inn'),
       14: F('ИНН исполнителя', 'doc', 1, 'inn'), 28: F('ИНН заказчика', 'doc', 1, 'inn'),
       43: F('ИНН комитента', 'item', 0, 'inn'),
       45: F('Наименование товара', 'item', 1, 'text'), 46: F('ИКПУ', 'item', 1, 'ikpu'),
@@ -1052,7 +1052,7 @@ const SPECS = {
       5: F('Номер договора', 'doc', 1, 'text'), 6: F('Дата договора', 'doc', 1, 'date'),
       7: F('ИНН/ПИНФЛ грузоотправителя', 'doc', 1, 'inn'), 8: F('Код филиала грузоотправителя', 'doc', 0, 'digits'),
       9: F('ИНН/ПИНФЛ грузополучателя', 'doc', 1, 'inn'), 10: F('Код филиала грузополучателя', 'doc', 0, 'digits'),
-      11: F('ИНН/ПИНФЛ экспедитора', 'doc', 1, 'inn'), 13: F('ИНН/ПИНФЛ грузоперевозчика', 'doc', 1, 'inn'),
+      11: F('ИНН/ПИНФЛ экспедитора', 'doc', 'w', 'inn'), 13: F('ИНН/ПИНФЛ грузоперевозчика', 'doc', 1, 'inn'),
       15: F('ИНН/ПИНФЛ клиента', 'doc', 0, 'inn'), 19: F('ИНН/ПИНФЛ заказчика', 'doc', 0, 'inn'),
       23: F('ID типа транспорта', 'doc', 1, 'enum', ['1']),
       24: F('Номер автомобиля', 'doc', 1, 'text'), 25: F('Модель автомобиля', 'doc', 1, 'text'),
@@ -1070,14 +1070,15 @@ const SPECS = {
       52: F('ИКПУ', 'item', 1, 'ikpu'), 53: F('Наименование товара', 'item', 1, 'text'),
       54: F('Код ед. измерения', 'item', 1, 'digits'), 55: F('Количество', 'item', 1, 'pos'),
       56: F('Цена', 'item', 1, 'money'), 57: F('Сумма без НДС', 'item', 1, 'num'),
-      58: F('Брутто', 'item', 1, 'num'), 59: F('Нетто', 'item', 1, 'num'),
-      60: F('Стоимость доставки', 'doc', 1, 'num'), 61: F('Стоимость доставки', 'doc', 1, 'num'), 62: F('Стоимость доставки', 'doc', 1, 'num'),
-      63: F('Данные для Uzum Market', 'doc', 0, 'text')
+      58: F('Брутто', 'item', 0, 'num'), 59: F('Нетто', 'item', 0, 'num'),
+      60: F('Общее расстояние', 'doc', 1, 'num'), 61: F('Стоимость доставки за 1 км', 'doc', 1, 'num'), 62: F('Стоимость доставки (в сумах)', 'doc', 1, 'num'),
+      63: F('SKU ID (Uzum Market)', 'doc', 0, 'text'),
+      46: F('Номер доверенности', 'cargo', 0, 'text'), 47: F('Доверенность от', 'cargo', 0, 'date'), 48: F('Доверенность до', 'cargo', 0, 'date')
     },
     sums: { qty: 55, price: 56, cost: 57 }, weight: [58, 59]
   },
   hybrid: {
-    name: 'Гибридная ЭСФ', max: 71, item: 44, dupNo: 3,
+    name: 'Гибридная ЭСФ', max: 70, item: 44, dupNo: 3,
     mark: [62, 63, 64], qty: 53, prec: 5,
     f: {
       2: F('ID подтипа гибридной ЭСФ', 'doc', 1, 'enum', ['0', '1', '4']),
@@ -1085,7 +1086,7 @@ const SPECS = {
       5: F('Номер договора', 'doc', 1, 'text'), 6: F('Дата договора', 'doc', 1, 'date'),
       7: F('ИНН поставщика', 'doc', 1, 'inn'), 8: F('Код филиала поставщика', 'doc', 0, 'digits'),
       9: F('ИНН покупателя', 'doc', 1, 'inn'), 10: F('Код филиала покупателя', 'doc', 0, 'digits'),
-      11: F('ИНН экспедитора', 'doc', 'w', 'inn'), 13: F('ИНН грузоперевозчика', 'doc', 'w', 'inn'),
+      11: F('ИНН экспедитора', 'doc', 0, 'inn'), 13: F('ИНН грузоперевозчика', 'doc', 1, 'inn'),
       15: F('ИНН клиента', 'doc', 0, 'inn'), 18: F('Дата договора с клиентом', 'doc', 0, 'date'),
       19: F('ИНН заказчика', 'doc', 0, 'inn'), 22: F('Дата договора с заказчиком', 'doc', 0, 'date'),
       23: F('ID типа транспорта', 'doc', 1, 'enum', ['1']),
@@ -1094,6 +1095,8 @@ const SPECS = {
       31: F('ПИНФЛ водителя', 'doc', 1, 'pinfl'), 32: F('ПИНФЛ ответственного лица', 'doc', 1, 'pinfl'),
       33: F('Область погрузки', 'doc', 1, 'enum', REGIONS), 34: F('Район погрузки', 'doc', 1, 'digits'), 35: F('Улица, дом погрузки', 'doc', 1, 'text'),
       36: F('Область доставки', 'doc', 1, 'enum', REGIONS), 37: F('Район доставки', 'doc', 1, 'digits'), 38: F('Улица, дом доставки', 'doc', 1, 'text'),
+      39: F('Доверенное лицо, ПИНФЛ', 'doc', 0, 'pinfl'), 40: F('Номер доверенности', 'doc', 0, 'text'),
+      41: F('Доверенность от', 'doc', 0, 'date'), 42: F('Доверенность до', 'doc', 0, 'date'),
       45: F('ИНН/ПИНФЛ комитента', 'item', 0, 'inn'),
       46: F('ИКПУ', 'item', 1, 'ikpu'), 47: F('Наименование товара', 'item', 1, 'text'),
       48: F('Штрих-код', 'item', 0, 'digits'), 50: F('Код ед. измерения', 'item', 1, 'digits'),
@@ -1106,11 +1109,10 @@ const SPECS = {
       62: F('Тип товара (маркировка)', 'item', 0, 'enum', range(1, 7)),
       63: F('Тип упаковки (маркировка)', 'item', 0, 'enum', PACKS),
       64: F('Коды маркировок', 'item', 0, 'codes'),
-      65: F('Происхождение товара', 'item', 1, 'enum', range(1, 4)),
-      66: F('ИНН/ПИНФЛ отпустившего товар', 'item', 0, 'inn'),
-      67: F('Стоимость доставки', 'doc', 0, 'num'), 68: F('Стоимость доставки', 'doc', 0, 'num'),
-      69: F('Брутто', 'item', 0, 'num'), 70: F('Нетто', 'item', 0, 'num'),
-      71: F('Отпуск лекарств', 'item', 0, 'enum', ['1', '2'])
+      65: F('Происхождение товара', 'item', 0, 'enum', range(1, 4)),
+      66: F('Товар отпустил (ИНН/ПИНФЛ)', 'doc', 0, 'inn'),
+      67: F('Общее расстояние', 'doc', 1, 'num'), 68: F('Стоимость доставки (в сумах)', 'doc', 1, 'num'),
+      69: F('Брутто', 'item', 1, 'num'), 70: F('Нетто', 'item', 1, 'num')
     },
     sums: { qty: 53, price: 54, excise: 56, cost: 57, rate: 58, vat: 59, total: 60 }, weight: [69, 70]
   },
@@ -1170,9 +1172,9 @@ function guessType(found, ws, X) {
   if (found.max === 12 || /подтип документа|произвольн/.test(h) && found.max < 20) return 'free';
   if (found.max === 73) return 'sf';
   if (found.max === 63) return 'ttn';
-  if (found.max === 71) return 'hybrid';
+  if (found.max === 70 || found.max === 71) return 'hybrid';
   if (/гибрид/.test(h)) return 'hybrid';
-  if (/перевоз|погрузк/.test(h)) return found.max > 66 ? 'hybrid' : 'ttn';
+  if (/перевоз|погрузк/.test(h)) return found.max > 64 ? 'hybrid' : 'ttn';
   return found.max > 40 ? 'sf' : 'free';
 }
 
@@ -1355,10 +1357,33 @@ function validateSheet(X, ws, sheetName) {
     if (!allOne && !seq) docSeq.forEach((d, i) => { if (d.v !== '1' && d.v !== String(i + 1)) push('warn', d.r, 1, 'П.п. документов: либо везде 1, либо 1, 2, 3… Здесь ожидалось ' + (i + 1) + '.', d.v); });
   }
   const dups = [...codes].filter(([, rs]) => rs.length > 1).map(([code, rs]) => ({ code, rows: [...new Set(rs)], n: rs.length }));
-  [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => push('warn', rs[1] - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '.', no));
+  [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no)));
   if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
   issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
   return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max };
+}
+
+// Шаблон для загрузки ИКПУ: A — ИКПУ код, B — тип происхождения товара, без строки с номерами столбцов
+function validateIkpu(X, ws, sheetName) {
+  const ref = X.utils.decode_range(ws['!ref'] || 'A1');
+  let hr = -1;
+  for (let r = ref.s.r; r <= Math.min(ref.e.r, ref.s.r + 10) && hr < 0; r++) { const a = cellInfo(X, ws, r, 0); if (a && /икпу/i.test(a.s)) hr = r; }
+  if (hr < 0) return null;
+  const fA = F('ИКПУ код', 'item', 1, 'ikpu'), fB = F('Тип происхождения товара', 'item', 1, 'enum', range(1, 4));
+  const issues = [], seen = new Map(); let rows = 0;
+  const push = (tone, r, c, f, msg, val) => issues.push({ tone, row: r + 1, n: c + 1, where: X.utils.encode_col(c) + ' · ' + f.n, msg, val });
+  for (let r = hr + 1; r <= ref.e.r; r++) {
+    const a = cellInfo(X, ws, r, 0), b = cellInfo(X, ws, r, 1);
+    if (!a && !b) continue;
+    rows++;
+    [[a, 0, fA], [b, 1, fB]].forEach(([i, c, f]) => {
+      if (!i) push('err', r, c, f, 'Обязательное поле не заполнено.');
+      else checkValue(f, i, 2, (tone, msg) => push(tone, r, c, f, msg, i.raw));
+    });
+    if (a) { const k = a.s.replace(/\s/g, ''); if (seen.has(k)) push('warn', r, 0, fA, 'Этот ИКПУ уже есть в строке ' + seen.get(k) + '.', a.raw); else seen.set(k, r + 1); }
+  }
+  if (!rows) issues.push({ tone: 'warn', row: hr + 2, where: '', msg: 'Под заголовком нет данных.' });
+  return { type: 'ikpu', name: 'Шаблон загрузки ИКПУ', sheet: sheetName, docs: rows, items: rows, rows, issues, dups: [], codes: 0 };
 }
 
 async function checkExcel(file) {
@@ -1367,7 +1392,7 @@ async function checkExcel(file) {
   let X, wb;
   try { X = await loadXLSX(); wb = X.read(await file.arrayBuffer(), { type: 'array' }); }
   catch (e) { showError('Не удалось открыть файл: ' + e.message, 'Нужен файл .xlsx шаблона Didox.'); return; }
-  const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n)).filter(Boolean);
+  const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
   if (!results.length) { showError('Не нашли шаблон в файле.', 'Ожидается строка с номерами столбцов 1, 2, 3… над данными, как в шаблонах Didox.'); return; }
   renderExcel(file.name, results);
 }
@@ -1391,7 +1416,9 @@ function renderExcel(fname, results) {
     const head = el('div', 'kind'); const badge = el('span', 'badge'); badge.innerHTML = svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/>', 2);
     head.append(badge, el('b', null, res.name)); box.append(head);
     const dl = el('dl');
-    [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]
+    (res.type === 'ikpu'
+      ? [['Лист', res.sheet], ['Строк', res.rows], ['Ошибок', errs.length], ['Предупреждений', warns.length]]
+      : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]])
       .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
     box.append(dl); out.append(box);
     report.push('', res.name + ' (лист ' + res.sheet + '): документов ' + res.docs + ', позиций ' + res.items + ', ошибок ' + (errs.length + res.dups.length) + ', предупреждений ' + warns.length);
