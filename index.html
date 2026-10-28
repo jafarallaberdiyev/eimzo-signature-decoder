@@ -58,7 +58,8 @@ body{overflow-x:hidden}
   .cols .group,.cols .hero,.cols .seg,.cols .search,.cols .json{margin-left:0;margin-right:0}
   .cols .btn-fill{width:100%;margin-left:0;margin-right:0}
   .cols .sec-h,.cols .sec-f{margin-left:16px;margin-right:16px}
-  .side{display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:thin}
+  .side{display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:none}
+  .side::-webkit-scrollbar{display:none}
   .side>*{flex-shrink:0}
   #dropzone{flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
   .side textarea{flex:1 1 auto;min-height:0;max-height:none;resize:none}
