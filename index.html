@@ -264,6 +264,19 @@ body.still .blob{animation-play-state:paused}
    </div>
    <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ, загрузка ИКПУ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
 
+   <div class="sec-h">Поиск дублей маркировки</div>
+   <div class="group" id="mkZone">
+     <textarea id="mkSrc" class="ids" spellcheck="false" aria-label="Коды маркировки" placeholder="Вставьте коды маркировки — по одному на строку или через пробел"></textarea>
+     <label class="cell tap ico" for="mkFile" style="border-top:.5px solid var(--sep)">
+       <span class="sq orange" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M17 5v14M20 5v14"/></svg></span>
+       <span class="lbl">Открыть Excel, CSV или TXT с кодами</span>
+       <svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+     </label>
+     <input type="file" id="mkFile" accept=".xlsx,.xls,.csv,.txt" hidden>
+   </div>
+   <button class="btn-fill" id="mkGo">Найти дубли</button>
+   <p class="sec-f">Ищет одинаковые коды по всему списку или по всем листам Excel и показывает, где каждый повтор. Коды проверяются на устройстве и никуда не отправляются.</p>
+
    <div class="sec-h">Оформление</div>
    <div class="group">
      <div class="cell"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
@@ -1659,6 +1672,117 @@ const xz = $('xlsZone');
 ['dragenter', 'dragover'].forEach(t => xz.addEventListener(t, e => { e.preventDefault(); xz.classList.add('drop-over'); }));
 ['dragleave', 'drop'].forEach(t => xz.addEventListener(t, e => { e.preventDefault(); xz.classList.remove('drop-over'); }));
 xz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) checkExcel(f); });
+
+/* ===== Поиск дублей маркировки в списке кодов или Excel ===== */
+// Коды разделяются только пробелами и переводами строк: запятая, «;» и кавычки допустимы внутри кода GS1.
+// Символ-разделитель GS (\x1d) при сравнении не учитывается — один и тот же код могут сканировать с ним и без.
+const MK_MIN = 18;            // в Excel кодом считаем строку от 18 печатных символов: ИКПУ (17), ИНН и ПИНФЛ так не попадут
+const mkKey = c => c.replace(/\x1d/g, '');
+const mkLooksLikeCode = t => t.length >= MK_MIN && /^[\x1d\x21-\x7e]+$/.test(t);
+
+function mkFromText(text) {
+  const items = [];
+  text.split(/\r?\n/).forEach((line, li) => line.split(/\s+/).forEach(t => {
+    t = t.replace(/^["']+|["']+$/g, '');
+    if (t) items.push({ code: t, where: 'строка ' + (li + 1) });
+  }));
+  return { items, source: 'список' };
+}
+function mkFromSheets(X, wb) {
+  const items = [], cols = new Set();
+  wb.SheetNames.forEach(name => {
+    const ws = wb.Sheets[name]; if (!ws['!ref']) return;
+    const ref = X.utils.decode_range(ws['!ref']);
+    for (let r = ref.s.r; r <= ref.e.r; r++) for (let c = ref.s.c; c <= ref.e.c; c++) {
+      const cell = ws[X.utils.encode_cell({ r, c })]; if (!cell || cell.v == null) continue;
+      String(cell.v).split(/\s+/).forEach(t => {
+        if (!mkLooksLikeCode(t)) return;
+        const addr = X.utils.encode_cell({ r, c });
+        items.push({ code: t, where: (wb.SheetNames.length > 1 ? name + '!' : '') + addr });
+        cols.add((wb.SheetNames.length > 1 ? name + '!' : '') + X.utils.encode_col(c));
+      });
+    }
+  });
+  return { items, source: 'Excel', cols: [...cols] };
+}
+
+function mkAnalyze(items) {
+  const map = new Map();
+  items.forEach(it => { const k = mkKey(it.code); if (!map.has(k)) map.set(k, []); map.get(k).push(it); });
+  const dups = [...map].filter(([, l]) => l.length > 1).map(([k, l]) => ({ code: l[0].code, n: l.length, where: l.map(x => x.where), gs: new Set(l.map(x => x.code)).size > 1 }))
+    .sort((a, b) => b.n - a.n);
+  // один код с криптохвостом и без: короткий — начало длинного
+  const keys = [...map.keys()].sort(), similar = [];
+  for (let i = 0; i + 1 < keys.length; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (a.length >= 20 && b.startsWith(a)) similar.push({ short: a, long: b, where: map.get(a)[0].where + ' и ' + map.get(b)[0].where });
+  }
+  const unique = [...map.values()].map(l => l[0].code);
+  return { total: items.length, unique, dups, similar, extra: items.length - map.size };
+}
+
+function mkRender(res, label, cols) {
+  const out = $('out'); out.textContent = ''; out.scrollTop = 0;
+  const box = el('div', 'hero appear'), head = el('div', 'kind'), badge = el('span', 'badge');
+  badge.innerHTML = svg('<path d="M4 5v14M7 5v14M11 5v14M14 5v14M17 5v14M20 5v14"/>', 2);
+  head.append(badge, el('b', null, 'Дубли маркировки')); box.append(head);
+  const dl = el('dl');
+  [['Источник', label], ['Всего кодов', res.total], ['Уникальных', res.unique.length], ['Кодов с дублями', res.dups.length], ['Лишних повторов', res.extra]]
+    .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
+  box.append(dl); out.append(box);
+
+  if (!res.total) { const g = group(); g.style.marginTop = '16px'; g.append(iconRow('warn', 'warn', 'Коды не найдены. В Excel кодом считается значение от ' + MK_MIN + ' символов латиницей, цифрами и знаками.')); out.append(g); return; }
+  if (cols && cols.length) out.append(el('p', 'sec-f', 'Коды найдены в столбцах: ' + cols.slice(0, 12).join(', ') + (cols.length > 12 ? '…' : '') + '.'));
+  if (!res.dups.length) { const g = group(); g.style.marginTop = '16px'; g.append(iconRow('ok', 'ok', 'Дублей нет — все ' + res.total + ' кодов уникальны.')); out.append(g); }
+
+  const LIMIT = 300;
+  if (res.dups.length) {
+    out.append(secH('Повторяющиеся коды (' + res.dups.length + ')'));
+    const g = group();
+    res.dups.slice(0, LIMIT).forEach(d => {
+      const w = d.where.slice(0, 10).join(', ') + (d.where.length > 10 ? ' и ещё ' + (d.where.length - 10) : '');
+      g.append(issueRow('err', 'Встречается ' + d.n + ' раз' + (d.n % 10 >= 2 && d.n % 10 <= 4 && (d.n % 100 < 12 || d.n % 100 > 14) ? 'а' : ''), w + (d.gs ? ' (часть со скрытым разделителем GS)' : ''), d.code));
+    });
+    if (res.dups.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.dups.length - LIMIT) + ' — скопируйте список дублей целиком'));
+    out.append(g);
+  }
+  if (res.similar.length) {
+    out.append(secH('Похоже на один и тот же код (' + res.similar.length + ')'));
+    const g = group();
+    res.similar.slice(0, LIMIT).forEach(s => g.append(issueRow('warn', s.where, 'Короткий код — начало длинного. Обычно это один код: с криптохвостом и без.', s.short + '  ⟶  ' + s.long)));
+    out.append(g);
+  }
+
+  const bar = el('div', 'jbar');
+  if (res.dups.length) {
+    const b1 = el('button', 'link', 'Копировать дубли');
+    b1.onclick = () => copyText(res.dups.map(d => d.code + '\t' + d.n + '\t' + d.where.join(', ')).join('\n'));
+    bar.append(b1);
+  }
+  const b2 = el('button', 'link', 'Копировать без дублей'); b2.onclick = () => copyText(res.unique.join('\n')); bar.append(b2);
+  const b3 = el('button', 'link', 'Скачать без дублей'); b3.onclick = () => saveFile('коды без дублей.txt', new Blob([res.unique.join('\r\n')], { type: 'text/plain' })); bar.append(b3);
+  out.append(bar);
+  if (window.bgBurst) window.bgBurst();
+  toast(res.dups.length ? 'Найдено дублей: ' + res.dups.length : 'Дублей нет');
+  if (!matchMedia('(min-width:1000px)').matches) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function mkRunFile(f) {
+  const out = $('out'); out.textContent = ''; out.append(secH('Поиск дублей')); const g = group(); g.append(iconRow('info', 'info', 'Читаем ' + f.name + '…')); out.append(g);
+  try {
+    if (/\.(xlsx|xls)$/i.test(f.name)) {
+      const X = await loadXLSX(), wb = X.read(await f.arrayBuffer(), { type: 'array' }), r = mkFromSheets(X, wb);
+      mkRender(mkAnalyze(r.items), f.name, r.cols);
+    } else mkRender(mkAnalyze(mkFromText(await f.text()).items), f.name);
+  } catch (e) { showError('Не удалось прочитать файл: ' + e.message, 'Подойдёт .xlsx, .xls, .csv или .txt.'); }
+}
+$('mkGo').onclick = () => { const t = $('mkSrc').value; if (!t.trim()) { showError('Поле пустое.', 'Вставьте коды или откройте файл.'); return; } mkRender(mkAnalyze(mkFromText(t).items), 'вставленный список'); };
+$('mkSrc').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') $('mkGo').click(); });
+$('mkFile').addEventListener('change', e => { if (e.target.files[0]) mkRunFile(e.target.files[0]); e.target.value = ''; });
+const mz = $('mkZone');
+['dragenter', 'dragover'].forEach(t => mz.addEventListener(t, e => { e.preventDefault(); mz.classList.add('drop-over'); }));
+['dragleave', 'drop'].forEach(t => mz.addEventListener(t, e => { e.preventDefault(); mz.classList.remove('drop-over'); }));
+mz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) mkRunFile(f); });
 
 /* ===== Обновление статуса документа в GoodSign ===== */
 const UPD_URL = 'https://api.goodsign.biz/v1/documents/search/update/';
