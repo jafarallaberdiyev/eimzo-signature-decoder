@@ -211,13 +211,13 @@ pre.raw{margin:0;white-space:pre-wrap;word-break:break-word}
 .blob.b2{width:40vmax;height:40vmax;right:-12vmax;bottom:-14vmax;background:color-mix(in srgb,var(--blue) 18%,transparent);animation:drift2 30s ease-in-out infinite alternate}
 @keyframes drift1{to{transform:translate(16vw,12vh) scale(1.12)}}
 @keyframes drift2{to{transform:translate(-18vw,-10vh) scale(.92)}}
-canvas#bg{position:absolute;inset:0;width:100%;height:100%;opacity:.7}
+.bg canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .4s linear}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 body.still .blob{animation-play-state:paused}
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><canvas id="bg"></canvas></div>
+<div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><canvas id="bg"></canvas><canvas id="bgMatrix"></canvas><canvas id="bgWaves"></canvas><canvas id="bgTop"></canvas></div>
 <div class="stage">
  <div class="device">
   <div class="island" id="toast" role="status" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="toastText"></span></div>
@@ -297,9 +297,17 @@ body.still .blob{animation-play-state:paused}
  </div>
 </div>
 <script>
-/* ===== Фон: сеть узлов с бегущими пакетами, символы base64, росчерки ===== */
+/* ===== Фон: три сцены по кругу — сеть, «Матрица», волны; поверх всплывает имя ===== */
 (function () {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
+  const cvM = document.getElementById('bgMatrix'), ctxM = cvM.getContext('2d');
+  const cvW = document.getElementById('bgWaves'), ctxW = cvW.getContext('2d');
+  const cvO = document.getElementById('bgTop'), ctxO = cvO.getContext('2d');
+  // Каждая сцена держится 3,5 часа и за полторы минуты плавно перетекает в следующую.
+  // Отсчёт по часам, поэтому после перезагрузки сцена та же. #bgfast в адресе ускоряет смену для проверки.
+  const FAST = /bgfast/.test(location.hash), HOLD = FAST ? 20e3 : 3.5 * 3600e3, FADE = FAST ? 8e3 : 90e3;
+  const MCH = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF', CELL = 18;
+  let cols = [];
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
   const CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let W = 0, H = 0, nodes = [], packets = [], glyphs = [], sigs = [], ripples = [];
@@ -310,7 +318,7 @@ body.still .blob{animation-play-state:paused}
   let names = [], nextName = 2500;
   function colors() {
     const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
-    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink') };
+    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), blue: g('--blue') };
   }
   function mkGlyph(any) {
     return { x: Math.random() * W, y: any ? Math.random() * H : H + 20, v: 10 + Math.random() * 22, ch: CH[Math.random() * CH.length | 0], sz: 9 + Math.random() * 7, z: .3 + Math.random() * .7, sw: Math.random() * 6.28 };
@@ -319,12 +327,13 @@ body.still .blob{animation-play-state:paused}
     colors();
     const dpr = Math.min(devicePixelRatio || 1, 2);
     W = innerWidth; H = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    [[cv, ctx], [cvM, ctxM], [cvW, ctxW], [cvO, ctxO]].forEach(([c, x]) => { c.width = W * dpr; c.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); });
+    cols = Array.from({ length: Math.ceil(W / CELL) }, () => newCol(true));
     const n = Math.min(Math.round(W * H / 16000), 110);
     nodes = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14, r: 1.2 + Math.random() * 1.8, hot: 0 }));
     glyphs = Array.from({ length: Math.min(Math.round(W * H / 14000), 140) }, () => mkGlyph(true));
     packets = [];
-    if (reduce.matches || paused) draw(performance.now());
+    if (reduce.matches || paused) frame(performance.now());
   }
   function newSig(now) {
     const x0 = W * (.08 + Math.random() * .55), y0 = H * (.15 + Math.random() * .7), w = 160 + Math.random() * 200;
@@ -418,23 +427,6 @@ body.still .blob{animation-play-state:paused}
       return true;
     });
 
-    // всплывающее имя
-    if (now > nextName && names.length < 1) {
-      names.push({ x: W * (.15 + Math.random() * .7), y: H * (.2 + Math.random() * .6), t0: now });
-      nextName = now + 5000 + Math.random() * 4000;
-    }
-    names = names.filter(nm => {
-      const age = (now - nm.t0) / 1000; if (age > 4) return false;
-      const a = age < .8 ? age / .8 : age > 3 ? 1 - (age - 3) : 1, s = .9 + .1 * Math.min(1, age / .8);
-      ctx.save(); ctx.translate(nm.x + ox, nm.y + oy - age * 8); ctx.scale(s, s);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'italic 600 34px Georgia, "Times New Roman", serif';
-      ctx.shadowColor = C.red; ctx.shadowBlur = 18 * a;
-      ctx.globalAlpha = .55 * a; ctx.fillStyle = C.ink; ctx.fillText(NAME, 0, 0);
-      ctx.shadowBlur = 0; ctx.globalAlpha = .7 * a; ctx.fillStyle = C.red;
-      ctx.fillRect(-ctx.measureText(NAME).width / 2 * Math.min(1, age / 1.2), 22, ctx.measureText(NAME).width * Math.min(1, age / 1.2), 2);
-      ctx.restore(); return true;
-    });
-
     // символы base64
     const boost = 1 + burst * 7; burst = Math.max(0, burst - dt * .9);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -449,15 +441,98 @@ body.still .blob{animation-play-state:paused}
     });
     ctx.globalAlpha = 1;
   }
-  function loop(now) { draw(now); raf = requestAnimationFrame(loop); }
-  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || document.hidden) { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
+  // всплывающее имя — на верхнем слое, поверх любой сцены
+  function drawNames(now) {
+    ctxO.clearRect(0, 0, W, H);
+    const ox = mx * 18, oy = my * 18;
+    if (now > nextName && names.length < 1) {
+      names.push({ x: W * (.15 + Math.random() * .7), y: H * (.2 + Math.random() * .6), t0: now });
+      nextName = now + 5000 + Math.random() * 4000;
+    }
+    names = names.filter(nm => {
+      const age = (now - nm.t0) / 1000; if (age > 4) return false;
+      const a = age < .8 ? age / .8 : age > 3 ? 1 - (age - 3) : 1, s = .9 + .1 * Math.min(1, age / .8);
+      ctxO.save(); ctxO.translate(nm.x + ox, nm.y + oy - age * 8); ctxO.scale(s, s);
+      ctxO.textAlign = 'center'; ctxO.textBaseline = 'middle'; ctxO.font = 'italic 600 34px Georgia, "Times New Roman", serif';
+      ctxO.shadowColor = C.red; ctxO.shadowBlur = 18 * a;
+      ctxO.globalAlpha = .4 * a; ctxO.fillStyle = C.ink; ctxO.fillText(NAME, 0, 0);
+      ctxO.shadowBlur = 0; ctxO.globalAlpha = .5 * a; ctxO.fillStyle = C.red;
+      ctxO.fillRect(-ctxO.measureText(NAME).width / 2 * Math.min(1, age / 1.2), 22, ctxO.measureText(NAME).width * Math.min(1, age / 1.2), 2);
+      ctxO.restore(); return true;
+    });
+  }
+
+  // «Матрица»: столбцы символов падают вниз, голова светлая, хвост гаснет цветом темы
+  function newCol(any) {
+    return { y: any ? Math.random() * H : -Math.random() * H * .4, v: 50 + Math.random() * 110, len: 10 + (Math.random() * 18 | 0), chars: [], cell: -1, blue: Math.random() < .4 };
+  }
+  function drawMatrix(dt) {
+    ctxM.clearRect(0, 0, W, H);
+    ctxM.font = '600 15px "JetBrains Mono", monospace'; ctxM.textAlign = 'center'; ctxM.textBaseline = 'top';
+    const boost = 1 + burst * 3;
+    cols.forEach((c, i) => {
+      c.y += c.v * dt * boost;
+      const head = Math.floor(c.y / CELL);
+      while (c.cell < head) { c.cell++; c.chars.unshift(MCH[Math.random() * MCH.length | 0]); if (c.chars.length > c.len) c.chars.pop(); }
+      if (Math.random() < .03 && c.chars.length > 2) c.chars[1 + (Math.random() * (c.chars.length - 1) | 0)] = MCH[Math.random() * MCH.length | 0];
+      const x = i * CELL + CELL / 2;
+      c.chars.forEach((ch, k) => {
+        const y = (head - k) * CELL; if (y < -CELL || y > H) return;
+        ctxM.globalAlpha = k === 0 ? .95 : Math.max(0, (1 - k / c.len) * .75);
+        ctxM.fillStyle = k === 0 ? C.ink : (c.blue ? C.blue : C.red);
+        ctxM.fillText(ch, x, y);
+      });
+      if ((head - c.chars.length) * CELL > H) Object.assign(c, newCol(false));
+    });
+    ctxM.globalAlpha = 1;
+  }
+
+  // волны: светящиеся ленты медленно плывут и колышутся
+  function drawWaves(now) {
+    ctxW.clearRect(0, 0, W, H);
+    const t = now / 1000, g = ctxW.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, C.red); g.addColorStop(1, C.blue);
+    ctxW.strokeStyle = g; ctxW.shadowColor = C.red; ctxW.shadowBlur = 10; ctxW.lineCap = 'round';
+    for (let k = 0; k < 7; k++) {
+      const base = H * (.18 + k * .11), amp = 26 + k * 7, f = .0035 + k * .0006, sp = .22 + k * .06;
+      ctxW.beginPath();
+      for (let x = -20; x <= W + 20; x += 14) {
+        const y = base + Math.sin(x * f + t * sp + k) * amp + Math.sin(x * f * .45 - t * sp * .6 + k * 2) * amp * .7 + my * 40 * (k % 2 ? 1 : -1);
+        x === -20 ? ctxW.moveTo(x, y) : ctxW.lineTo(x, y);
+      }
+      ctxW.globalAlpha = Math.min(.8, .32 + .1 * Math.sin(t * .4 + k) + burst * .3); ctxW.lineWidth = 1.5 + (k % 3) * 1.1;
+      ctxW.stroke();
+    }
+    ctxW.shadowBlur = 0; ctxW.globalAlpha = 1;
+  }
+
+  // доля каждой сцены сейчас: [сеть, матрица, волны]
+  function weights() {
+    const t = Date.now() % (HOLD * 3), i = Math.floor(t / HOLD), into = t - i * HOLD, w = [0, 0, 0];
+    let k = into > HOLD - FADE ? (into - (HOLD - FADE)) / FADE : 0;
+    k = k * k * (3 - 2 * k);
+    w[i] = 1 - k; w[(i + 1) % 3] += k;
+    return w;
+  }
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000), w = weights();
+    cv.style.opacity = (.7 * w[0]).toFixed(3); cvM.style.opacity = (.5 * w[1]).toFixed(3); cvW.style.opacity = (.9 * w[2]).toFixed(3); cvO.style.opacity = '1';
+    if (w[0] > .001) draw(now);
+    else { last = now; mx += (tx - mx) * .05; my += (ty - my) * .05; burst = Math.max(0, burst - dt * .9); }
+    if (w[1] > .001) drawMatrix(dt);
+    if (w[2] > .001) drawWaves(now);
+    drawNames(now);
+  }
+
+  function loop(now) { frame(now); raf = requestAnimationFrame(loop); }
+  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || document.hidden) { frame(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
   addEventListener('resize', resize);
   addEventListener('pointermove', e => { tx = e.clientX / W - .5; ty = e.clientY / H - .5; px = e.clientX; py = e.clientY; }, { passive: true });
   addEventListener('pointerleave', () => { px = py = -999; });
   document.addEventListener('visibilitychange', start);
   reduce.addEventListener && reduce.addEventListener('change', start);
   const dm = matchMedia('(prefers-color-scheme: dark)');
-  dm.addEventListener && dm.addEventListener('change', () => { colors(); if (reduce.matches || paused) draw(performance.now()); });
+  dm.addEventListener && dm.addEventListener('change', () => { colors(); if (reduce.matches || paused) frame(performance.now()); });
   colors(); resize(); start();
   window.bgBurst = () => { burst = 1; for (let i = 0; i < 12; i++) spawnPacket(); };
   window.bgPause = p => { paused = p; document.body.classList.toggle('still', p); start(); };
