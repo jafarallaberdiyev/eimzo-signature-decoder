@@ -105,7 +105,9 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .link:hover{opacity:.7}
 .link:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,.cell:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
 
-.large{padding:2px 16px 0}
+.large{padding:28px 16px 0}
+.row-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.link.small{font-size:13px;min-height:0;padding:2px 4px}
 .large h1{font:700 34px/1.2 var(--sans);letter-spacing:.01em;margin:0}
 .large p{margin:4px 0 0;color:var(--sec);font-size:15px}
 
@@ -220,13 +222,6 @@ body.still .blob{animation-play-state:paused}
  <div class="device">
   <div class="island" id="toast" role="status" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="toastText"></span></div>
   <div class="screen" id="screen">
-   <div class="topbar" id="topbar">
-    <div class="nav">
-      <span></span>
-      <span class="t">Подпись</span>
-      <button class="link r" id="clear">Очистить</button>
-    </div>
-   </div>
    <div class="large" id="large">
      <h1>Подпись</h1>
      <p>Вставьте подпись — покажем, кто подписал и что внутри документа</p>
@@ -234,7 +229,7 @@ body.still .blob{animation-play-state:paused}
 
    <div class="cols">
    <div class="side">
-   <div class="sec-h">Base64 из Payload запроса sign</div>
+   <div class="sec-h row-h"><span>Base64 из Payload запроса sign</span><button class="link small" id="clear">Очистить</button></div>
    <div class="group" id="dropzone">
      <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
      <label class="cell tap ico" for="file" style="border-top:.5px solid var(--sep)">
@@ -1849,8 +1844,6 @@ async function runUpdate() {
 $('updGo').onclick = runUpdate;
 $('updIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runUpdate(); });
 
-/* навбар: маленький заголовок появляется, когда большой уходит под панель */
-new IntersectionObserver(([e]) => $('topbar').classList.toggle('solid', !e.isIntersecting), { rootMargin: '-100px 0px 0px 0px', threshold: 0 }).observe($('large'));
 $('motion').addEventListener('change', e => { window.bgPause(!e.target.checked); toast(e.target.checked ? 'Анимация включена' : 'Анимация выключена'); });
 </script>
 </body>
