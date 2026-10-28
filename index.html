@@ -11,7 +11,7 @@
 <style>
 :root{
   --bg:#F2F2F7; --cell:#FFFFFF; --label:#000000; --sec:#6C6C70; --ter:#AEAEB2; --sep:rgba(60,60,67,.29); --fill:rgba(118,118,128,.12);
-  --thumb:#FFFFFF; --tint:#5B3FD0; --tint-strong:#4A2FB8; --link:#4A2FB8; --red:#FF3B30; --blue:#2F6BFF; --green:#34C759; --orange:#FF9500; --gray:#8E8E93;
+  --thumb:#FFFFFF; --tint:#5B3FD0; --tint-strong:#4A2FB8; --link:#4A2FB8; --red:#FF3B30; --blue:#2F6BFF; --yellow:#FFE01B; --on-yellow:#1B1530; --green:#34C759; --orange:#FF9500; --gray:#8E8E93;
   --j-key:#3A3A3C; --j-str:#248A3D; --j-num:#D70015; --j-null:#8E8E93; --mark:#E3DCFF; --mark-ink:#000;
   --cv-red:#5B3FD0; --cv-gray:#8E8E93; --cv-ink:#000000; --page:#1C1C1E;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Inter","Segoe UI",Roboto,system-ui,sans-serif;
@@ -21,7 +21,7 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --bg:#000000; --cell:#1C1C1E; --label:#FFFFFF; --sec:#98989F; --ter:#5A5A5E; --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24);
-    --thumb:#636366; --tint:#7B61FF; --tint-strong:#6C4DFF; --link:#A592FF; --red:#FF453A; --blue:#3D7BFF; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
+    --thumb:#636366; --tint:#7B61FF; --tint-strong:#6C4DFF; --link:#A592FF; --red:#FF453A; --blue:#3D7BFF; --yellow:#FFE01B; --on-yellow:#1B1530; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
     --j-key:#E5E5EA; --j-str:#30D158; --j-num:#FF6961; --j-null:#8E8E93; --mark:#3A2A80; --mark-ink:#FFF;
     --cv-red:#8B73FF; --cv-ink:#FFFFFF;
     color-scheme:dark;
@@ -29,7 +29,7 @@
 }
 :root[data-theme="dark"]{
   --bg:#000000; --cell:#1C1C1E; --label:#FFFFFF; --sec:#98989F; --ter:#5A5A5E; --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24);
-  --thumb:#636366; --tint:#7B61FF; --tint-strong:#6C4DFF; --link:#A592FF; --red:#FF453A; --blue:#3D7BFF; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
+  --thumb:#636366; --tint:#7B61FF; --tint-strong:#6C4DFF; --link:#A592FF; --red:#FF453A; --blue:#3D7BFF; --yellow:#FFE01B; --on-yellow:#1B1530; --green:#30D158; --orange:#FF9F0A; --gray:#8E8E93;
   --j-key:#E5E5EA; --j-str:#30D158; --j-num:#FF6961; --j-null:#8E8E93; --mark:#3A2A80; --mark-ink:#FFF;
   --cv-red:#8B73FF; --cv-ink:#FFFFFF;
   color-scheme:dark;
@@ -92,7 +92,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .island span{opacity:0;white-space:nowrap;transition:opacity .2s}
 .island.wide{min-width:250px;height:44px;opacity:1}
 .island.wide span{opacity:1;transition-delay:.12s}
-.island .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.island .dot{width:9px;height:9px;border-radius:50%;background:var(--yellow)}
 
 /* ===== Навбар ===== */
 .topbar{background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);border-bottom:.5px solid transparent;transition:border-color .2s}
@@ -137,6 +137,8 @@ textarea::placeholder{color:var(--ter)}
 .btn-fill:active{opacity:.75}
 .btn-fill.busy{opacity:.6}
 .btn-fill:disabled{opacity:.6;cursor:default}
+/* жёлтый — только для главного действия, как кнопка «Создать» в Didox */
+.btn-fill.accent{background:var(--yellow);color:var(--on-yellow)}
 textarea.ids{min-height:88px;max-height:30vh}
 .cell .lbl a{color:var(--link);text-decoration:none;white-space:nowrap}
 .cell .lbl .id{font:13px/1.35 var(--mono);overflow-wrap:anywhere}
@@ -318,7 +320,7 @@ body.still .blob{animation-play-state:paused}
   let names = [], nextName = 2500;
   function colors() {
     const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
-    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), blue: g('--blue') };
+    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), blue: g('--blue'), yellow: g('--yellow') };
   }
   function mkGlyph(any) {
     return { x: Math.random() * W, y: any ? Math.random() * H : H + 20, v: 10 + Math.random() * 22, ch: CH[Math.random() * CH.length | 0], sz: 9 + Math.random() * 7, z: .3 + Math.random() * .7, sw: Math.random() * 6.28 };
@@ -456,7 +458,7 @@ body.still .blob{animation-play-state:paused}
       ctxO.textAlign = 'center'; ctxO.textBaseline = 'middle'; ctxO.font = 'italic 600 34px Georgia, "Times New Roman", serif';
       ctxO.shadowColor = C.red; ctxO.shadowBlur = 18 * a;
       ctxO.globalAlpha = .4 * a; ctxO.fillStyle = C.ink; ctxO.fillText(NAME, 0, 0);
-      ctxO.shadowBlur = 0; ctxO.globalAlpha = .5 * a; ctxO.fillStyle = C.red;
+      ctxO.shadowBlur = 0; ctxO.globalAlpha = .7 * a; ctxO.fillStyle = C.yellow;
       ctxO.fillRect(-ctxO.measureText(NAME).width / 2 * Math.min(1, age / 1.2), 22, ctxO.measureText(NAME).width * Math.min(1, age / 1.2), 2);
       ctxO.restore(); return true;
     });
@@ -1732,11 +1734,11 @@ function renderExcel(fname, results) {
   if (totalFixes) {
     out.append(secH('Будет исправлено автоматически (' + totalFixes + ')'));
     const g = group();
-    results.forEach(res => res.fixes.slice(0, LIMIT).forEach(f => g.append(issueRow('ok', 'Строка ' + f.row + ' · ' + f.where, f.why + '.', f.old, f))));
+    results.forEach(res => res.fixes.slice(0, LIMIT).forEach(f => g.append(issueRow('ok', 'Строка ' + f.row + ' · ' + f.where, f.why[0].toUpperCase() + f.why.slice(1) + '.', f.old, f))));
     if (totalFixes > LIMIT) g.append(el('div', 'more', 'и ещё — полный список будет на листе «Исправления»'));
     out.append(g);
     if (/\.xlsx$/i.test(fname)) {
-      const btn = el('button', 'btn-fill', 'Скачать исправленный шаблон'); btn.onclick = () => downloadFixed(btn);
+      const btn = el('button', 'btn-fill accent', 'Скачать исправленный шаблон'); btn.onclick = () => downloadFixed(btn);
       out.insertBefore(btn, out.children[1] || null);
       out.append(el('p', 'sec-f', 'В скачанной копии исправленные ячейки подсвечены зелёным, а на листе «Исправления» — что было и что стало. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
     } else out.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
