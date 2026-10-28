@@ -130,6 +130,10 @@ textarea::placeholder{color:var(--ter)}
 .btn-fill{display:block;width:calc(100% - 32px);margin:16px 16px 0;height:50px;border:0;border-radius:14px;background:var(--tint-strong);color:#fff;font:600 17px/1 var(--sans);cursor:pointer;transition:opacity .2s}
 .btn-fill:active{opacity:.75}
 .btn-fill.busy{opacity:.6}
+.btn-fill:disabled{opacity:.6;cursor:default}
+textarea.ids{min-height:88px;max-height:30vh}
+.cell .lbl a{color:var(--tint-strong);text-decoration:none;white-space:nowrap}
+.cell .lbl .id{font:13px/1.35 var(--mono);overflow-wrap:anywhere}
 
 /* Карточка документа */
 .hero{margin:16px 16px 0;padding:18px 18px 16px;border-radius:16px;background:var(--cell);display:grid;gap:12px}
@@ -234,6 +238,13 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="go">Расшифровать</button>
    <p class="sec-f">Можно с кавычками или целым JSON запроса. Расшифровка идёт на устройстве, данные никуда не отправляются.</p>
+
+   <div class="sec-h">Обновить статус документа в GoodSign</div>
+   <div class="group">
+     <textarea id="updIds" class="ids" spellcheck="false" aria-label="ID документов" placeholder="ID документа, по одному на строку"></textarea>
+   </div>
+   <button class="btn-fill" id="updGo">Обновить статус</button>
+   <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
 
    <div class="sec-h">Оформление</div>
    <div class="group">
@@ -957,6 +968,61 @@ const dz = $('dropzone');
 ['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('drop-over'); }));
 ['dragleave', 'drop'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove('drop-over'); }));
 dz.addEventListener('drop', e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+/* ===== Обновление статуса документа в GoodSign ===== */
+const UPD_URL = 'https://api.goodsign.biz/v1/documents/search/update/';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function updateOne(id) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(UPD_URL + id);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.success === true) return { ok: true };
+      return { ok: false, msg: 'Сервер ответил ' + res.status + (data ? ': ' + JSON.stringify(data) : '') };
+    } catch (e) {
+      // сеть или браузер не пустил запрос — пробуем ещё, потом даём ссылку
+      if (attempt === 3) return { ok: false, blocked: true };
+      await sleep(1000 * attempt);
+    }
+  }
+}
+
+function updRow(tone, id, note, link) {
+  const c = el('div', 'cell ico multi');
+  const sq = el('span', 'sq ' + TONE[tone]); sq.innerHTML = svg(ICON[tone]); sq.setAttribute('aria-hidden', 'true');
+  const lbl = el('span', 'lbl'); lbl.append(el('span', 'id', id));
+  if (note) lbl.append(el('br'), document.createTextNode(note));
+  if (link) { const a = el('a', null, ' Открыть ссылку'); a.href = UPD_URL + id; a.target = '_blank'; a.rel = 'noopener noreferrer'; lbl.append(a); }
+  c.append(sq, lbl);
+  return c;
+}
+
+async function runUpdate() {
+  const ids = [...new Set($('updIds').value.split(/[\s,;]+/).filter(Boolean))];
+  const out = $('out'); out.textContent = ''; out.scrollTop = 0;
+  if (!ids.length) { showError('Нет ID.', 'Вставьте ID документа — 32 символа из ссылки на документ.'); return; }
+  const btn = $('updGo'); btn.disabled = true;
+  out.append(secH('Обновление статуса'));
+  const g = group(); out.append(g);
+  const foot = el('p', 'sec-f'); out.append(foot);
+  let ok = 0, fail = 0;
+  for (const [i, id] of ids.entries()) {
+    foot.textContent = (i + 1) + ' из ' + ids.length + '…';
+    if (!/^[0-9a-f]{32}$/i.test(id)) { g.append(updRow('warn', id, 'Неверный формат ID — нужно 32 символа (0–9, a–f).')); fail++; continue; }
+    const r = await updateOne(id);
+    if (r.ok) { g.append(updRow('ok', id, 'Статус обновлён.')); ok++; }
+    else if (r.blocked) { g.append(updRow('err', id, 'Браузер не пустил запрос.', true)); fail++; }
+    else { g.append(updRow('err', id, r.msg)); fail++; }
+    await sleep(300);
+  }
+  foot.textContent = 'Готово: успешно ' + ok + ', ошибок ' + fail + '.' + (g.querySelector('a') ? ' По ссылке «Открыть ссылку» статус обновится в новой вкладке.' : '');
+  btn.disabled = false;
+  if (window.bgBurst && ok) window.bgBurst();
+  toast(fail ? 'Обновлено ' + ok + ' из ' + ids.length : 'Статус обновлён');
+}
+$('updGo').onclick = runUpdate;
+$('updIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runUpdate(); });
 
 /* навбар: маленький заголовок появляется, когда большой уходит под панель */
 new IntersectionObserver(([e]) => $('topbar').classList.toggle('solid', !e.isIntersecting), { rootMargin: '-100px 0px 0px 0px', threshold: 0 }).observe($('large'));
