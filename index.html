@@ -44,6 +44,11 @@
 }
 :root[data-design="didox"][data-theme="dark"]{--tint:#7C6CFF; --tint-strong:#6A59FF; --link:#9A8CFF; --mark:#3A3170; --cv-red:#8B7DFF; --blue:#3D7BFF}
 :root[data-design="mono"][data-theme="dark"]{--tint:#E5E5EA; --tint-strong:#F2F2F7; --link:#F2F2F7; --on-tint:#000000; --mark:#48484A; --cv-red:#AEAEB2}
+:root[data-design="clouds"]{--bg:#68B8D7; --tint:#1E88C8; --tint-strong:#1572AE; --link:#1572AE; --mark:#CDE9F7; --cv-red:#1E88C8}
+@media (prefers-color-scheme:dark){
+  :root[data-design="clouds"]:not([data-theme="light"]){--bg:#0B1624; --tint:#4FB3E8; --tint-strong:#2E9BD6; --link:#6CC4F0; --mark:#123E5A; --cv-red:#4FB3E8}
+}
+:root[data-design="clouds"][data-theme="dark"]{--bg:#0B1624; --tint:#4FB3E8; --tint-strong:#2E9BD6; --link:#6CC4F0; --mark:#123E5A; --cv-red:#4FB3E8}
 :root[data-design="matrix"]{
   --bg:#000000; --cell:#06110A; --label:#D9FFE3; --sec:#6FBF85; --ter:#2F6B40; --sep:rgba(0,255,102,.18); --fill:rgba(0,255,102,.1);
   --thumb:#123A20; --on-tint:#001A0A; --tint:#00E05A; --tint-strong:#00D455; --link:#3BFF85; --y-text:#FFE01B; --green:#30D158;
@@ -244,21 +249,26 @@ pre.raw{margin:0;white-space:pre-wrap;word-break:break-word}
 @keyframes drift1{to{transform:translate(16vw,12vh) scale(1.12)}}
 @keyframes drift2{to{transform:translate(-18vw,-10vh) scale(.92)}}
 canvas#bg{position:absolute;inset:0;width:100%;height:100%;opacity:.7}
+#vanta{position:absolute;inset:0}
+#vanta[hidden]{display:none}
+:root[data-design="clouds"] .blob{display:none}
 /* Выбор дизайна: карточки с превью */
-.designs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
+.designs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:12px}
+@media (max-width:420px){.designs{gap:6px;padding:10px}.dz{font-size:11px}}
 .dz{border:0;background:var(--fill);border-radius:12px;padding:6px 6px 8px;cursor:pointer;color:var(--label);font:500 12px/1.2 var(--sans);display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:box-shadow .2s}
 .dz i{display:block;height:40px;border-radius:8px}
 .dz[aria-checked="true"]{box-shadow:0 0 0 2px var(--tint)}
 .dz-classic i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#FF453A,#D70015)}
 .dz-didox i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#7C6CFF,#2F6BFF)}
 .dz-matrix i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),repeating-linear-gradient(90deg,rgba(0,255,102,.85) 0 2px,transparent 2px 9px),linear-gradient(#000,#04220F)}
+.dz-clouds i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),radial-gradient(ellipse at 30% 78%,#fff 0 24%,transparent 25%),radial-gradient(ellipse at 62% 84%,#ADC1DE 0 22%,transparent 23%),linear-gradient(#68B8D7,#A9D8EC)}
 .dz-mono i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#8E8E93,#2C2C2E)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 body.still .blob{animation-play-state:paused}
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><canvas id="bg"></canvas></div>
+<div class="bg" aria-hidden="true"><div id="vanta" hidden></div><div class="blob b1"></div><div class="blob b2"></div><canvas id="bg"></canvas></div>
 <div class="stage">
  <div class="device">
   <div class="island" id="toast" role="status" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="toastText"></span></div>
@@ -320,6 +330,7 @@ body.still .blob{animation-play-state:paused}
        <button class="dz dz-classic" data-d="classic" role="radio" aria-checked="false"><i></i>Классика</button>
        <button class="dz dz-didox" data-d="didox" role="radio" aria-checked="false"><i></i>Didox</button>
        <button class="dz dz-matrix" data-d="matrix" role="radio" aria-checked="false"><i></i>Матрица</button>
+       <button class="dz dz-clouds" data-d="clouds" role="radio" aria-checked="false"><i></i>Облака</button>
        <button class="dz dz-mono" data-d="mono" role="radio" aria-checked="false"><i></i>Графит</button>
      </div>
      <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
@@ -356,7 +367,7 @@ body.still .blob{animation-play-state:paused}
   let C = {};
   const LINK = 150;
   let hold = false;
-  const SCENES = { classic: 'net', didox: 'docs', matrix: 'matrix', mono: 'glyphs' };
+  const SCENES = { classic: 'net', didox: 'docs', matrix: 'matrix', mono: 'glyphs', clouds: 'clouds' };
   const MCH = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF', CELL = 18;
   let scene = 'net', cols = [], docs = [];
   function colors() {
@@ -539,17 +550,35 @@ body.still .blob{animation-play-state:paused}
     ctx.globalAlpha = 1;
   }
   function loop(now) { draw(now); raf = requestAnimationFrame(loop); }
-  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || hold || document.hidden) { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
+  // «Облака» — Vanta.js на three.js; библиотеки грузятся, только когда выбран этот дизайн
+  const vantaEl = document.getElementById('vanta');
+  let vanta = null, vantaP = null;
+  const loadScript = src => new Promise((ok, fail) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = fail; document.head.append(sc); });
+  const DAY = { backgroundColor: 0xffffff, skyColor: 0x68b8d7, cloudColor: 0xadc1de, cloudShadowColor: 0x183550, sunColor: 0xff9919, sunGlareColor: 0xff6633, sunlightColor: 0xff9933 };
+  const NIGHT = { backgroundColor: 0x0b1624, skyColor: 0x0d2238, cloudColor: 0x34445e, cloudShadowColor: 0x050a14, sunColor: 0xffd27a, sunGlareColor: 0xff9966, sunlightColor: 0x8899bb };
+  async function syncClouds() {
+    if (scene !== 'clouds') { if (vanta) { vanta.destroy(); vanta = null; } vantaEl.hidden = true; return; }
+    vantaEl.hidden = false;
+    const opts = Object.assign({}, getComputedStyle(document.documentElement).colorScheme === 'dark' ? NIGHT : DAY, { speed: reduce.matches || paused || hold ? 0 : 1 });
+    try {
+      if (!window.VANTA || !window.VANTA.CLOUDS) await (vantaP = vantaP || loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js')
+        .then(() => loadScript('https://cdn.jsdelivr.net/npm/vanta@0.5.24/dist/vanta.clouds.min.js')));
+      if (scene !== 'clouds') return;
+      if (vanta) vanta.setOptions(opts);
+      else vanta = window.VANTA.CLOUDS(Object.assign({ el: vantaEl, THREE: window.THREE, mouseControls: true, touchControls: true, gyroControls: false, minHeight: 200, minWidth: 200 }, opts));
+    } catch (e) { vantaP = null; vantaEl.hidden = true; }
+  }
+  function start() { cancelAnimationFrame(raf); syncClouds(); if (reduce.matches || paused || hold || document.hidden || scene === 'clouds') { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
   addEventListener('resize', resize);
   addEventListener('pointermove', e => { tx = e.clientX / W - .5; ty = e.clientY / H - .5; px = e.clientX; py = e.clientY; }, { passive: true });
   addEventListener('pointerleave', () => { px = py = -999; });
   document.addEventListener('visibilitychange', start);
   reduce.addEventListener && reduce.addEventListener('change', start);
   const dm = matchMedia('(prefers-color-scheme: dark)');
-  dm.addEventListener && dm.addEventListener('change', () => { colors(); if (reduce.matches || paused) draw(performance.now()); });
+  dm.addEventListener && dm.addEventListener('change', () => { colors(); if (reduce.matches || paused) draw(performance.now()); if (vanta) { vanta.destroy(); vanta = null; } syncClouds(); });
   colors(); resize(); start();
   window.bgBurst = () => { burst = 1; for (let i = 0; i < 12; i++) spawnPacket(); };
-  window.bgScene = d => { scene = SCENES[d] || 'net'; colors(); if (reduce.matches || paused) draw(performance.now()); };
+  window.bgScene = d => { scene = SCENES[d] || 'net'; colors(); start(); };
   scene = SCENES[document.documentElement.dataset.design] || 'net';
   window.bgHold = h => { hold = h; start(); };
   window.bgPause = p => { paused = p; document.body.classList.toggle('still', p); start(); };
@@ -2008,7 +2037,7 @@ async function runUpdate() {
 $('updGo').onclick = runUpdate;
 $('updIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runUpdate(); });
 
-const DESIGNS = { classic: ['Классика', '%23FF453A', '%23D70015'], didox: ['Didox', '%237C6CFF', '%232F6BFF'], matrix: ['Матрица', '%2300E05A', '%23006B2A'], mono: ['Графит', '%238E8E93', '%232C2C2E'] };
+const DESIGNS = { classic: ['Классика', '%23FF453A', '%23D70015'], didox: ['Didox', '%237C6CFF', '%232F6BFF'], matrix: ['Матрица', '%2300E05A', '%23006B2A'], mono: ['Графит', '%238E8E93', '%232C2C2E'], clouds: ['Облака', '%2368B8D7', '%23183550'] };
 const icon = document.querySelector('link[rel="icon"]'), iconSrc = icon.href;
 function setDesign(d, quiet) {
   if (!DESIGNS[d]) d = 'classic';
