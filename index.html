@@ -127,6 +127,16 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .link.small{font-size:13px;min-height:0;padding:2px 4px}
 .large h1{font:700 34px/1.2 var(--sans);letter-spacing:.01em;margin:0}
 .large h1 .y{color:var(--y-text)}
+/* «Очистить» — справа в строке заголовка, над результатом; видна, только когда есть что очищать */
+.large{position:relative}
+.clear-all{position:absolute;right:16px;top:28px;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border:0;border-radius:18px;background:var(--cell);color:var(--link);font:600 15px/1 var(--sans);cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.08);animation:pop .25s ease-out}
+.clear-all svg{width:17px;height:17px}
+.clear-all:hover{background:color-mix(in srgb,var(--tint) 12%,var(--cell))}
+.clear-all[hidden]{display:none}
+@media (min-width:1000px){.clear-all{right:24px;top:auto;bottom:0}}
+/* на телефоне результат ниже полей — кнопка плавает в правом нижнем углу */
+@media (max-width:999px){.clear-all{position:fixed;z-index:40;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);height:44px;padding:0 18px;border-radius:22px;box-shadow:0 8px 24px rgba(0,0,0,.22)}}
+@keyframes pop{from{opacity:0;transform:scale(.9)}}
 .side>.sec-h::before{content:"";display:inline-block;flex:none;width:6px;height:6px;border-radius:50%;background:var(--yellow);margin:0 8px 1px 0;vertical-align:middle}
 .side>.sec-h.row-h>span{flex:1}
 .large p{margin:4px 0 0;color:var(--sec);font-size:15px}
@@ -255,11 +265,12 @@ body.still .blob{animation-play-state:paused}
   <div class="screen" id="screen">
    <div class="large" id="large">
      <h1><span class="y">ЭДО</span> Помощник</h1>
+     <button class="clear-all" id="clear" hidden title="Очистить результат и поля (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Очистить</button>
    </div>
 
    <div class="cols">
    <div class="side">
-   <div class="sec-h row-h"><span>Base64 из Payload запроса sign</span><button class="link small" id="clear">Очистить</button></div>
+   <div class="sec-h">Base64 из Payload запроса sign</div>
    <div class="group" id="dropzone">
      <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
      <label class="cell tap ico" for="file" style="border-top:.5px solid var(--sep)">
@@ -1076,7 +1087,17 @@ function runBytes(bytes) {
 }
 
 $('go').onclick = () => runText($('src').value);
-$('clear').onclick = () => { $('src').value = ''; current = null; const out = $('out'); out.textContent = ''; out.append(secH('Готово')); const g = group(); g.append(iconRow('info', 'info', 'Поле очищено. Вставьте новую подпись.')); out.append(g); $('src').focus(); };
+// Очистить всё: результат справа возвращается к подсказке, поля ввода пустеют
+const emptyOut = $('out').innerHTML;
+function clearAll() {
+  ['src', 'updIds', 'mkSrc'].forEach(id => $(id).value = '');
+  current = null; lastExcel = null;
+  const out = $('out'); out.innerHTML = emptyOut; out.scrollTop = 0;
+  toast('Очищено');
+}
+$('clear').onclick = clearAll;
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('clear').hidden && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) clearAll(); });
+new MutationObserver(() => { $('clear').hidden = !!$('out').querySelector(':scope > .empty'); }).observe($('out'), { childList: true });
 $('src').addEventListener('paste', () => setTimeout(() => runText($('src').value), 0));
 $('src').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runText($('src').value); });
 
