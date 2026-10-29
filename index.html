@@ -334,7 +334,7 @@ body.still .blob{animation-play-state:paused}
  </div>
 </div>
 <script>
-/* ===== Фон: сцена зависит от дизайна — сеть узлов, волны, «Матрица» или только символы base64 ===== */
+/* ===== Фон: сцена зависит от дизайна — сеть узлов, летящие документы, «Матрица» или только символы base64 ===== */
 (function () {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
@@ -345,12 +345,12 @@ body.still .blob{animation-play-state:paused}
   let C = {};
   const LINK = 150, NAME = 'Ёдгор';
   let names = [], nextName = 2500;
-  const SCENES = { classic: 'net', didox: 'waves', matrix: 'matrix', mono: 'glyphs' };
+  const SCENES = { classic: 'net', didox: 'docs', matrix: 'matrix', mono: 'glyphs' };
   const MCH = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF', CELL = 18;
-  let scene = 'net', cols = [];
+  let scene = 'net', cols = [], docs = [];
   function colors() {
     const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
-    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), yellow: g('--yellow'), blue: g('--blue') };
+    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), yellow: g('--yellow') };
   }
   function mkGlyph(any) {
     return { x: Math.random() * W, y: any ? Math.random() * H : H + 20, v: 10 + Math.random() * 22, ch: CH[Math.random() * CH.length | 0], sz: 9 + Math.random() * 7, z: .3 + Math.random() * .7, sw: Math.random() * 6.28 };
@@ -364,6 +364,7 @@ body.still .blob{animation-play-state:paused}
     nodes = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14, r: 1.2 + Math.random() * 1.8, hot: 0 }));
     glyphs = Array.from({ length: Math.min(Math.round(W * H / 14000), 140) }, () => mkGlyph(true));
     cols = Array.from({ length: Math.ceil(W / CELL) }, () => newCol(true));
+    docs = Array.from({ length: Math.min(Math.round(W * H / 26000), 50) }, () => mkDoc(true));
     packets = [];
     if (reduce.matches || paused) draw(performance.now());
   }
@@ -389,22 +390,33 @@ body.still .blob{animation-play-state:paused}
       if ((head - c.chars.length) * CELL > H) Object.assign(c, newCol(false));
     });
   }
-  // волны: светящиеся ленты медленно плывут и колышутся
-  function drawWaves(now) {
-    const t = now / 1000, g = ctx.createLinearGradient(0, 0, W, 0);
-    g.addColorStop(0, C.red); g.addColorStop(1, C.blue);
-    ctx.strokeStyle = g; ctx.shadowColor = C.red; ctx.shadowBlur = 10; ctx.lineCap = 'round';
-    for (let k = 0; k < 7; k++) {
-      const base = H * (.18 + k * .11), amp = 26 + k * 7, f = .0035 + k * .0006, sp = .22 + k * .06;
+  // документы: всплывают снизу, покачиваются и по пути получают подпись — галочку в кружке
+  function mkDoc(any) {
+    return { x: Math.random() * W, y: any ? Math.random() * H : H + 60, v: 10 + Math.random() * 16, dx: (Math.random() - .5) * 8,
+      r: (Math.random() - .5) * .5, vr: (Math.random() - .5) * .08, s: .6 + Math.random() * .7, sign: 1.5 + Math.random() * 12, t: 0 };
+  }
+  function drawDocs(dt) {
+    const w = 34, h = 44, f = 9;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    docs.forEach(d => {
+      d.y -= d.v * d.s * dt * (1 + burst * 4); d.x += d.dx * dt; d.r += d.vr * dt; d.t += dt * (1 + burst * 8);
+      if (d.y < -80 || d.x < -80 || d.x > W + 80) Object.assign(d, mkDoc(false));
+      const k = Math.max(0, Math.min(1, (d.t - d.sign) / .8));
+      ctx.save(); ctx.translate(d.x + mx * 30 * d.s, d.y + my * 30 * d.s); ctx.rotate(d.r); ctx.scale(d.s, d.s);
+      ctx.globalAlpha = .3 + .35 * k; ctx.strokeStyle = k > 0 ? C.red : C.gray; ctx.lineWidth = 1.5;
       ctx.beginPath();
-      for (let x = -20; x <= W + 20; x += 14) {
-        const y = base + Math.sin(x * f + t * sp + k) * amp + Math.sin(x * f * .45 - t * sp * .6 + k * 2) * amp * .7 + my * 40 * (k % 2 ? 1 : -1);
-        x === -20 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.globalAlpha = Math.min(.7, .3 + .1 * Math.sin(t * .4 + k) + burst * .3); ctx.lineWidth = 1.2 + (k % 3) * .9;
+      ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2 - f, -h / 2); ctx.lineTo(w / 2, -h / 2 + f); ctx.lineTo(w / 2, h / 2); ctx.lineTo(-w / 2, h / 2); ctx.closePath();
+      ctx.moveTo(w / 2 - f, -h / 2); ctx.lineTo(w / 2 - f, -h / 2 + f); ctx.lineTo(w / 2, -h / 2 + f);
+      for (let l = 0; l < 3; l++) { ctx.moveTo(-w / 2 + 6, -h / 2 + 15 + l * 7); ctx.lineTo(w / 2 - 7 - (l === 2 ? 9 : 0), -h / 2 + 15 + l * 7); }
       ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
+      if (k > 0) {
+        ctx.globalAlpha = .9 * k; ctx.fillStyle = C.red; ctx.shadowColor = C.red; ctx.shadowBlur = 12 * k;
+        ctx.beginPath(); ctx.arc(w / 2 - 3, h / 2 - 3, 8, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(w / 2 - 7, h / 2 - 3); ctx.lineTo(w / 2 - 4, h / 2); ctx.lineTo(w / 2 + 1, h / 2 - 6); ctx.stroke();
+      }
+      ctx.restore();
+    });
   }
   function newSig(now) {
     const x0 = W * (.08 + Math.random() * .55), y0 = H * (.15 + Math.random() * .7), w = 160 + Math.random() * 200;
@@ -499,7 +511,7 @@ body.still .blob{animation-play-state:paused}
         return true;
       });
     } else if (scene === 'matrix') drawMatrix(dt);
-    else if (scene === 'waves') drawWaves(now);
+    else if (scene === 'docs') drawDocs(dt);
 
     // всплывающее имя
     if (now > nextName && names.length < 1) {
