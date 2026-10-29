@@ -35,7 +35,7 @@
   --cv-red:#FF453A; --cv-ink:#FFFFFF;
   color-scheme:dark;
 }
-/* ===== Дизайны: Классика (по умолчанию), Didox, Матрица, Графит ===== */
+/* ===== Дизайны: Классика (по умолчанию), Didox, Дождь, Облака, Графит ===== */
 :root[data-design="didox"]{--tint:#5B4CF5; --tint-strong:#4434D6; --link:#4434D6; --mark:#DCD8FF; --cv-red:#5B4CF5; --blue:#2F6BFF}
 :root[data-design="mono"]{--tint:#3A3A3C; --tint-strong:#1C1C1E; --link:#1C1C1E; --mark:#E5E5EA; --cv-red:#636366}
 @media (prefers-color-scheme:dark){
@@ -49,13 +49,11 @@
   :root[data-design="clouds"]:not([data-theme="light"]){--bg:#0B1624; --tint:#4FB3E8; --tint-strong:#2E9BD6; --link:#6CC4F0; --mark:#123E5A; --cv-red:#4FB3E8}
 }
 :root[data-design="clouds"][data-theme="dark"]{--bg:#0B1624; --tint:#4FB3E8; --tint-strong:#2E9BD6; --link:#6CC4F0; --mark:#123E5A; --cv-red:#4FB3E8}
-:root[data-design="matrix"]{
-  --bg:#000000; --cell:#06110A; --label:#D9FFE3; --sec:#6FBF85; --ter:#2F6B40; --sep:rgba(0,255,102,.18); --fill:rgba(0,255,102,.1);
-  --thumb:#123A20; --on-tint:#001A0A; --tint:#00E05A; --tint-strong:#00D455; --link:#3BFF85; --y-text:#FFE01B; --green:#30D158;
-  --j-key:#B8FFC9; --j-str:#3BFF85; --j-num:#FFE01B; --j-null:#4F8F60; --mark:#0B4D22; --mark-ink:#FFF;
-  --cv-red:#00FF66; --cv-gray:#1F7A3C; --cv-ink:#B8FFC9;
-  color-scheme:dark;
+:root[data-design="rain"]{--bg:#E4EAF0; --tint:#3B6E8F; --tint-strong:#2C5873; --link:#2C5873; --mark:#D3E3EE; --cv-red:#3F7CA6; --cv-gray:#7A93A8}
+@media (prefers-color-scheme:dark){
+  :root[data-design="rain"]:not([data-theme="light"]){--bg:#090E14; --tint:#5FA8D3; --tint-strong:#4A95C2; --link:#7DBBE0; --mark:#1E3A50; --cv-red:#7DBBE0; --cv-gray:#4F6577}
 }
+:root[data-design="rain"][data-theme="dark"]{--bg:#090E14; --tint:#5FA8D3; --tint-strong:#4A95C2; --link:#7DBBE0; --mark:#1E3A50; --cv-red:#7DBBE0; --cv-gray:#4F6577}
 *,*::before,*::after{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;font:400 17px/1.35 var(--sans);color:var(--label);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
@@ -260,7 +258,7 @@ canvas#bg{position:absolute;inset:0;width:100%;height:100%;opacity:.7}
 .dz[aria-checked="true"]{box-shadow:0 0 0 2px var(--tint)}
 .dz-classic i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#FF453A,#D70015)}
 .dz-didox i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#7C6CFF,#2F6BFF)}
-.dz-matrix i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),repeating-linear-gradient(90deg,rgba(0,255,102,.85) 0 2px,transparent 2px 9px),linear-gradient(#000,#04220F)}
+.dz-rain i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),repeating-linear-gradient(105deg,rgba(255,255,255,.55) 0 1px,transparent 1px 7px),linear-gradient(#5E7A92,#22364A)}
 .dz-clouds i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),radial-gradient(ellipse at 30% 78%,#fff 0 24%,transparent 25%),radial-gradient(ellipse at 62% 84%,#ADC1DE 0 22%,transparent 23%),linear-gradient(#68B8D7,#A9D8EC)}
 .dz-mono i{background:radial-gradient(circle at 80% 30%,#FFE01B 0 5px,transparent 6px),linear-gradient(135deg,#8E8E93,#2C2C2E)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -329,7 +327,7 @@ body.still .blob{animation-play-state:paused}
      <div class="designs" role="radiogroup" aria-label="Дизайн">
        <button class="dz dz-classic" data-d="classic" role="radio" aria-checked="false"><i></i>Классика</button>
        <button class="dz dz-didox" data-d="didox" role="radio" aria-checked="false"><i></i>Didox</button>
-       <button class="dz dz-matrix" data-d="matrix" role="radio" aria-checked="false"><i></i>Матрица</button>
+       <button class="dz dz-rain" data-d="rain" role="radio" aria-checked="false"><i></i>Дождь</button>
        <button class="dz dz-clouds" data-d="clouds" role="radio" aria-checked="false"><i></i>Облака</button>
        <button class="dz dz-mono" data-d="mono" role="radio" aria-checked="false"><i></i>Графит</button>
      </div>
@@ -356,7 +354,7 @@ body.still .blob{animation-play-state:paused}
  </div>
 </div>
 <script>
-/* ===== Фон: сцена зависит от дизайна — сеть узлов, летящие документы, «Матрица» или только символы base64 ===== */
+/* ===== Фон: сцена зависит от дизайна — сеть узлов, летящие документы, дождь, облака или только символы base64 ===== */
 (function () {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
@@ -367,9 +365,8 @@ body.still .blob{animation-play-state:paused}
   let C = {};
   const LINK = 150;
   let hold = false;
-  const SCENES = { classic: 'net', didox: 'docs', matrix: 'matrix', mono: 'glyphs', clouds: 'clouds' };
-  const MCH = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF', CELL = 18;
-  let scene = 'net', cols = [], docs = [];
+  const SCENES = { classic: 'net', didox: 'docs', rain: 'rain', mono: 'glyphs', clouds: 'clouds' };
+  let scene = 'net', drops = [], splashes = [], docs = [], flash = 0, nextFlash = 0;
   function colors() {
     const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
     C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), yellow: g('--yellow') };
@@ -385,32 +382,40 @@ body.still .blob{animation-play-state:paused}
     const n = Math.min(Math.round(W * H / 16000), 110);
     nodes = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14, r: 1.2 + Math.random() * 1.8, hot: 0 }));
     glyphs = Array.from({ length: Math.min(Math.round(W * H / 14000), 140) }, () => mkGlyph(true));
-    cols = Array.from({ length: Math.ceil(W / CELL) }, () => newCol(true));
+    drops = Array.from({ length: Math.min(Math.round(W * H / 4500), 280) }, () => mkDrop(true));
     docs = Array.from({ length: Math.min(Math.round(W * H / 26000), 50) }, () => mkDoc(true));
     packets = [];
     if (reduce.matches || paused) draw(performance.now());
   }
-  // «Матрица»: столбцы символов падают вниз, голова светлая, хвост гаснет
-  function newCol(any) {
-    return { y: any ? Math.random() * H : -Math.random() * H * .4, v: 50 + Math.random() * 110, len: 10 + (Math.random() * 18 | 0), chars: [], cell: -1 };
+  // дождь: косые капли, ветер следует за мышью, внизу всплески; изредка далёкая молния
+  function mkDrop(any) {
+    const z = .35 + Math.random() * .65;
+    return { x: Math.random() * (W + 200) - 100, y: any ? Math.random() * H : -20 - Math.random() * 120, z, v: 520 + z * 520, len: 8 + z * 18, floor: H * (.86 + Math.random() * .14) };
   }
-  function drawMatrix(dt) {
-    ctx.font = '600 15px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const boost = 1 + burst * 3;
-    cols.forEach((c, i) => {
-      c.y += c.v * dt * boost;
-      const head = Math.floor(c.y / CELL);
-      while (c.cell < head) { c.cell++; c.chars.unshift(MCH[Math.random() * MCH.length | 0]); if (c.chars.length > c.len) c.chars.pop(); }
-      if (Math.random() < .03 && c.chars.length > 2) c.chars[1 + (Math.random() * (c.chars.length - 1) | 0)] = MCH[Math.random() * MCH.length | 0];
-      const x = i * CELL + CELL / 2;
-      c.chars.forEach((ch, k) => {
-        const y = (head - k) * CELL; if (y < -CELL || y > H) return;
-        ctx.globalAlpha = k === 0 ? .95 : Math.max(0, (1 - k / c.len) * .75);
-        ctx.fillStyle = k === 0 ? C.ink : C.red;
-        ctx.fillText(ch, x, y);
-      });
-      if ((head - c.chars.length) * CELL > H) Object.assign(c, newCol(false));
+  function drawRain(dt, now) {
+    const wind = -.16 + mx * .6, boost = 1 + burst * 1.5;
+    ctx.strokeStyle = C.red; ctx.lineCap = 'round';
+    drops.forEach(d => {
+      const dy = d.v * dt * boost; d.y += dy; d.x += dy * wind;
+      if (d.y > d.floor) { if (d.z > .6) splashes.push({ x: d.x, y: d.floor, t: 0, z: d.z }); Object.assign(d, mkDrop(false)); return; }
+      ctx.globalAlpha = .12 + .4 * d.z; ctx.lineWidth = .6 + d.z * .9;
+      ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len * wind, d.y - d.len); ctx.stroke();
     });
+    ctx.lineWidth = 1;
+    splashes = splashes.filter(sp => {
+      sp.t += dt; if (sp.t > .45) return false;
+      const k = sp.t / .45;
+      ctx.globalAlpha = .45 * (1 - k) * sp.z;
+      ctx.beginPath(); ctx.ellipse(sp.x, sp.y, 2 + k * 12 * sp.z, (2 + k * 12 * sp.z) * .3, 0, 0, 6.2832); ctx.stroke();
+      return true;
+    });
+    if (!nextFlash) nextFlash = now + 15000 + Math.random() * 25000;
+    if (now > nextFlash) { flash = 1; nextFlash = now + 20000 + Math.random() * 30000; }
+    if (flash > 0) {
+      const f = flash > .7 ? 1 : flash > .5 ? .3 : flash;   // двойная вспышка, потом затухание
+      ctx.globalAlpha = .1 * f; ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H);
+      flash = Math.max(0, flash - dt * 1.6);
+    }
   }
   // документы: всплывают снизу, покачиваются и по пути получают подпись — галочку в кружке
   function mkDoc(any) {
@@ -532,7 +537,7 @@ body.still .blob{animation-play-state:paused}
         if (prog < 1) { const p = s.pts[n - 1]; ctx.globalAlpha = .85 * fade; ctx.fillStyle = C.red; ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 6.2832); ctx.fill(); }
         return true;
       });
-    } else if (scene === 'matrix') drawMatrix(dt);
+    } else if (scene === 'rain') drawRain(dt, now);
     else if (scene === 'docs') drawDocs(dt);
 
     // символы base64
@@ -2037,9 +2042,10 @@ async function runUpdate() {
 $('updGo').onclick = runUpdate;
 $('updIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runUpdate(); });
 
-const DESIGNS = { classic: ['Классика', '%23FF453A', '%23D70015'], didox: ['Didox', '%237C6CFF', '%232F6BFF'], matrix: ['Матрица', '%2300E05A', '%23006B2A'], mono: ['Графит', '%238E8E93', '%232C2C2E'], clouds: ['Облака', '%2368B8D7', '%23183550'] };
+const DESIGNS = { classic: ['Классика', '%23FF453A', '%23D70015'], didox: ['Didox', '%237C6CFF', '%232F6BFF'], rain: ['Дождь', '%235E7A92', '%2322364A'], mono: ['Графит', '%238E8E93', '%232C2C2E'], clouds: ['Облака', '%2368B8D7', '%23183550'] };
 const icon = document.querySelector('link[rel="icon"]'), iconSrc = icon.href;
 function setDesign(d, quiet) {
+  if (d === 'matrix') d = 'rain';   // раньше здесь была «Матрица»
   if (!DESIGNS[d]) d = 'classic';
   document.documentElement.dataset.design = d;
   document.querySelectorAll('.dz').forEach(b => b.setAttribute('aria-checked', String(b.dataset.d === d)));
