@@ -343,8 +343,8 @@ body.still .blob{animation-play-state:paused}
   let mx = 0, my = 0, tx = 0, ty = 0, px = -999, py = -999;
   let raf = 0, last = performance.now(), nextSig = 1200, nextPkt = 0, burst = 0, paused = false;
   let C = {};
-  const LINK = 150, NAME = 'Ёдгор';
-  let names = [], nextName = 2500;
+  const LINK = 150;
+  let hold = false;
   const SCENES = { classic: 'net', didox: 'docs', matrix: 'matrix', mono: 'glyphs' };
   const MCH = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ABCDEF', CELL = 18;
   let scene = 'net', cols = [], docs = [];
@@ -513,23 +513,6 @@ body.still .blob{animation-play-state:paused}
     } else if (scene === 'matrix') drawMatrix(dt);
     else if (scene === 'docs') drawDocs(dt);
 
-    // всплывающее имя
-    if (now > nextName && names.length < 1) {
-      names.push({ x: W * (.15 + Math.random() * .7), y: H * (.2 + Math.random() * .6), t0: now });
-      nextName = now + 5000 + Math.random() * 4000;
-    }
-    names = names.filter(nm => {
-      const age = (now - nm.t0) / 1000; if (age > 4) return false;
-      const a = age < .8 ? age / .8 : age > 3 ? 1 - (age - 3) : 1, s = .9 + .1 * Math.min(1, age / .8);
-      ctx.save(); ctx.translate(nm.x + ox, nm.y + oy - age * 8); ctx.scale(s, s);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'italic 600 34px Georgia, "Times New Roman", serif';
-      ctx.shadowColor = C.red; ctx.shadowBlur = 18 * a;
-      ctx.globalAlpha = .55 * a; ctx.fillStyle = C.ink; ctx.fillText(NAME, 0, 0);
-      ctx.shadowBlur = 0; ctx.globalAlpha = .7 * a; ctx.fillStyle = C.yellow;
-      ctx.fillRect(-ctx.measureText(NAME).width / 2 * Math.min(1, age / 1.2), 22, ctx.measureText(NAME).width * Math.min(1, age / 1.2), 2);
-      ctx.restore(); return true;
-    });
-
     // символы base64
     const boost = 1 + burst * 7; burst = Math.max(0, burst - dt * .9);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -545,7 +528,7 @@ body.still .blob{animation-play-state:paused}
     ctx.globalAlpha = 1;
   }
   function loop(now) { draw(now); raf = requestAnimationFrame(loop); }
-  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || document.hidden) { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
+  function start() { cancelAnimationFrame(raf); if (reduce.matches || paused || hold || document.hidden) { draw(performance.now()); return; } last = performance.now(); raf = requestAnimationFrame(loop); }
   addEventListener('resize', resize);
   addEventListener('pointermove', e => { tx = e.clientX / W - .5; ty = e.clientY / H - .5; px = e.clientX; py = e.clientY; }, { passive: true });
   addEventListener('pointerleave', () => { px = py = -999; });
@@ -557,6 +540,7 @@ body.still .blob{animation-play-state:paused}
   window.bgBurst = () => { burst = 1; for (let i = 0; i < 12; i++) spawnPacket(); };
   window.bgScene = d => { scene = SCENES[d] || 'net'; colors(); if (reduce.matches || paused) draw(performance.now()); };
   scene = SCENES[document.documentElement.dataset.design] || 'net';
+  window.bgHold = h => { hold = h; start(); };
   window.bgPause = p => { paused = p; document.body.classList.toggle('still', p); start(); };
 })();
 /* ===== Разбор ASN.1 (BER/DER) и CMS SignedData ===== */
@@ -1253,7 +1237,51 @@ function loadXLSX() {
   return XLSX_P;
 }
 
+// Файл разбирается в фоновом потоке (Web Worker), чтобы страница не замирала на больших шаблонах.
+// Если браузер не даёт запустить поток, разбираем как раньше — в основном.
+const READ_OPTS = { type: 'array', cellHTML: false, cellFormula: false };
+const WORKER_SRC = "importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');" +
+  "onmessage=function(e){try{postMessage({id:e.data.id,wb:XLSX.read(e.data.buf," + JSON.stringify(READ_OPTS) + ")})}catch(x){postMessage({id:e.data.id,err:String(x&&x.message||x)})}}";
+let xlsxWorker = null, workerSeq = 0;
+const workerJobs = new Map();
+async function readWorkbook(file) {
+  const X = await loadXLSX(), buf = await file.arrayBuffer(), local = () => X.read(buf, READ_OPTS);
+  if (xlsxWorker === null) {
+    try {
+      xlsxWorker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+      xlsxWorker.onmessage = e => { const j = workerJobs.get(e.data.id); if (!j) return; workerJobs.delete(e.data.id); e.data.err ? j.fail(new Error(e.data.err)) : j.ok(e.data.wb); };
+      xlsxWorker.onerror = e => { e.preventDefault(); xlsxWorker.terminate(); xlsxWorker = false; workerJobs.forEach(j => j.retry()); workerJobs.clear(); };
+    } catch (e) { xlsxWorker = false; }
+  }
+  if (!xlsxWorker) { await new Promise(r => setTimeout(r, 30)); return { X, wb: local() }; }
+  const wb = await new Promise((ok, fail) => {
+    const id = ++workerSeq;
+    workerJobs.set(id, { ok, fail, retry: () => { try { ok(local()); } catch (e) { fail(e); } } });
+    xlsxWorker.postMessage({ id, buf });
+  });
+  return { X, wb };
+}
+
+// Шаблон часто «растянут» оформлением на тысячи пустых строк — берём диапазон по заполненным ячейкам
+function usedRange(X, ws) {
+  const ref = X.utils.decode_range(ws['!ref'] || 'A1'), e = { r: ref.s.r, c: ref.s.c };
+  for (const k in ws) {
+    if (k[0] === '!') continue;
+    const cell = ws[k]; if (!cell || cell.v == null || cell.v === '') continue;
+    const a = X.utils.decode_cell(k); if (a.r > e.r) e.r = a.r; if (a.c > e.c) e.c = a.c;
+  }
+  return { s: ref.s, e: { r: Math.min(ref.e.r, e.r), c: Math.min(ref.e.c, e.c) } };
+}
+
+// одна и та же ячейка читается проверками много раз — разбираем её один раз
+const cellCache = new WeakMap();
 function cellInfo(X, ws, r, c) {
+  let m = cellCache.get(ws); if (!m) cellCache.set(ws, m = new Map());
+  const k = r * 16384 + c;
+  if (m.has(k)) return m.get(k);
+  const v = readCell(X, ws, r, c); m.set(k, v); return v;
+}
+function readCell(X, ws, r, c) {
   const cell = ws[X.utils.encode_cell({ r, c })];
   if (!cell || cell.v == null || cell.v === '') return null;
   const isDate = cell.t === 'd' || (cell.t === 'n' && cell.z && X.SSF.is_date(cell.z));
@@ -1383,14 +1411,16 @@ function fixValue(X, f, i, prec) {
 }
 
 function validateSheet(X, ws, sheetName) {
-  const ref = X.utils.decode_range(ws['!ref'] || 'A1');
+  const ref = usedRange(X, ws);
   const found = findNumberRow(X, ws, ref);
   if (!found) return null;
   const type = guessType(found, ws, X), spec = SPECS[type];
   const issues = [], codes = new Map(), docNos = new Map();
   const col = n => found.map[n];
   const letter = n => col(n) != null ? X.utils.encode_col(col(n)) : '?';
-  const title = n => { const h = col(n) != null ? headerText(X, ws, found.r, col(n)).replace(/\s*\*\s*/g, '').trim() : ''; return (spec.f[n] && spec.f[n].n) || h || 'Столбец ' + n; };
+  const titles = {};
+  const title = n => titles[n] != null ? titles[n] : (titles[n] = title0(n));
+  const title0 = n => { const h = col(n) != null ? headerText(X, ws, found.r, col(n)).replace(/\s*\*\s*/g, '').trim() : ''; return (spec.f[n] && spec.f[n].n) || h || 'Столбец ' + n; };
   const starred = n => col(n) != null && /\*/.test(headerText(X, ws, found.r, col(n)));
   const get = (r, n) => col(n) == null ? null : cellInfo(X, ws, r, col(n));
   const addr = (r, n) => col(n) == null ? null : X.utils.encode_cell({ r, c: col(n) });
@@ -1401,8 +1431,10 @@ function validateSheet(X, ws, sheetName) {
 
   let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [], docCodes = [];
   let inherit = {};
+  const mapCols = Object.keys(found.map).map(Number), fieldNos = Object.keys(spec.f).map(Number);
+  const itemFields = fieldNos.filter(n => spec.f[n].lvl === 'item');
   for (let r = found.r + 1; r <= ref.e.r; r++) {
-    const filled = Object.keys(found.map).some(n => get(r, +n));
+    const filled = mapCols.some(n => get(r, n));
     if (!filled) continue;
     rows++;
     const a = get(r, 1);
@@ -1418,9 +1450,8 @@ function validateSheet(X, ws, sheetName) {
       if (!g) push('err', r, spec.cargo, 'Не указан п.п. груза в первой строке ТТН.');
       else if (g.s !== String(cargo)) push('warn', r, spec.cargo, 'П.п. грузов идут по порядку 1, 2, 3… — ожидалось ' + cargo + '.', g.raw);
     }
-    const itemFields = Object.keys(spec.f).filter(n => spec.f[n].lvl === 'item');
-    const ttnOnly = type === 'sf' && get(r, 71) && !itemFields.some(n => get(r, +n));
-    const isItem = !spec.perRow && !ttnOnly && (newDoc || itemFields.some(n => get(r, +n)) || !!get(r, spec.item));
+    const ttnOnly = type === 'sf' && get(r, 71) && !itemFields.some(n => get(r, n));
+    const isItem = !spec.perRow && !ttnOnly && (newDoc || itemFields.some(n => get(r, n)) || !!get(r, spec.item));
     if (isItem) {
       items++; pos++;
       const p = get(r, spec.item);
@@ -1429,8 +1460,8 @@ function validateSheet(X, ws, sheetName) {
     }
 
     // поля
-    for (const k of Object.keys(spec.f)) {
-      const n = +k, f = spec.f[n];
+    for (const n of fieldNos) {
+      const f = spec.f[n];
       if (col(n) == null) continue;
       const atLevel = f.lvl === 'doc' ? newDoc : f.lvl === 'cargo' ? newCargo : isItem;
       let i = get(r, n); const own = !!i;
@@ -1540,7 +1571,7 @@ function validateSheet(X, ws, sheetName) {
 
 // Шаблон для загрузки ИКПУ: A — ИКПУ код, B — тип происхождения товара, без строки с номерами столбцов
 function validateIkpu(X, ws, sheetName) {
-  const ref = X.utils.decode_range(ws['!ref'] || 'A1');
+  const ref = usedRange(X, ws);
   let hr = -1;
   for (let r = ref.s.r; r <= Math.min(ref.e.r, ref.s.r + 10) && hr < 0; r++) { const a = cellInfo(X, ws, r, 0); if (a && /икпу/i.test(a.s)) hr = r; }
   if (hr < 0) return null;
@@ -1568,10 +1599,13 @@ function validateIkpu(X, ws, sheetName) {
 async function checkExcel(file) {
   const out = $('out'); out.textContent = ''; out.scrollTop = 0;
   out.append(secH('Проверка Excel')); const g = group(); g.append(iconRow('info', 'info', 'Читаем ' + file.name + '…')); out.append(g);
-  let X, wb;
-  try { X = await loadXLSX(); wb = X.read(await file.arrayBuffer(), { type: 'array' }); }
-  catch (e) { showError('Не удалось открыть файл: ' + e.message, 'Нужен файл .xlsx шаблона Didox.'); return; }
-  const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
+  let X, wb, results;
+  window.bgHold(true);
+  try {
+    try { ({ X, wb } = await readWorkbook(file)); }
+    catch (e) { showError('Не удалось открыть файл: ' + e.message, 'Нужен файл .xlsx шаблона Didox.'); return; }
+    results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
+  } finally { window.bgHold(false); }
   if (!results.length) { showError('Не нашли шаблон в файле.', 'Ожидается строка с номерами столбцов 1, 2, 3… над данными, как в шаблонах Didox.'); return; }
   lastExcel = { file, results };
   renderExcel(file.name, results);
@@ -1797,15 +1831,14 @@ function mkFromText(text) {
 function mkFromSheets(X, wb) {
   const items = [], cols = new Set();
   wb.SheetNames.forEach(name => {
-    const ws = wb.Sheets[name]; if (!ws['!ref']) return;
-    const ref = X.utils.decode_range(ws['!ref']);
-    for (let r = ref.s.r; r <= ref.e.r; r++) for (let c = ref.s.c; c <= ref.e.c; c++) {
-      const cell = ws[X.utils.encode_cell({ r, c })]; if (!cell || cell.v == null) continue;
+    const ws = wb.Sheets[name], pre = wb.SheetNames.length > 1 ? name + '!' : '';
+    for (const addr in ws) {
+      if (addr[0] === '!') continue;
+      const cell = ws[addr]; if (!cell || cell.v == null) continue;
       String(cell.v).split(/\s+/).forEach(t => {
         if (!mkLooksLikeCode(t)) return;
-        const addr = X.utils.encode_cell({ r, c });
-        items.push({ code: t, where: (wb.SheetNames.length > 1 ? name + '!' : '') + addr });
-        cols.add((wb.SheetNames.length > 1 ? name + '!' : '') + X.utils.encode_col(c));
+        items.push({ code: t, where: pre + addr });
+        cols.add(pre + addr.replace(/\d+$/, ''));
       });
     }
   });
@@ -1885,8 +1918,9 @@ async function mkRunFile(f) {
   const out = $('out'); out.textContent = ''; out.append(secH('Поиск дублей')); const g = group(); g.append(iconRow('info', 'info', 'Читаем ' + f.name + '…')); out.append(g);
   try {
     if (/\.(xlsx|xls)$/i.test(f.name)) {
-      const X = await loadXLSX(), wb = X.read(await f.arrayBuffer(), { type: 'array' }), r = mkFromSheets(X, wb);
-      mkRender(mkAnalyze(r.items), f.name, r.cols);
+      const { X, wb } = await readWorkbook(f);
+      window.bgHold(true);
+      try { const r = mkFromSheets(X, wb); mkRender(mkAnalyze(r.items), f.name, r.cols); } finally { window.bgHold(false); }
     } else mkRender(mkAnalyze(mkFromText(await f.text()).items), f.name);
   } catch (e) { showError('Не удалось прочитать файл: ' + e.message, 'Подойдёт .xlsx, .xls, .csv или .txt.'); }
 }
