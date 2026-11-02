@@ -1683,11 +1683,26 @@ function validateSheet(X, ws, sheetName, opts) {
   [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no)));
   if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
   issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
-  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max, fixes: [...fixes.values()], groups, merged: !!opts.merge };
+  const dataCols = new Set(Object.values(found.map));
+  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max, fixes: [...fixes.values()], groups, merged: !!opts.merge,
+    hdrRow: found.r, dataCols: [...dataCols], numCells: numericCells(X, ws, found.r, dataCols, fixes) };
 }
 
 // Подряд идущие строки с п.п. в столбце A, у которых совпадают номер документа и все заполненные поля документа
 // (даты, договор, ИНН сторон), — почти наверняка одна СФ с несколькими товарами: п.п. поставили в каждой строке.
+// Инструкция: «Формат всех полей должен быть в Текстовом формате». Считаем ячейки с данными, записанные числом,
+// которые не попали в исправления, — в исправленной копии они станут текстом.
+function numericCells(X, ws, fromRow, cols, fixes) {
+  let n = 0;
+  for (const k in ws) {
+    if (k[0] === '!') continue;
+    const c = ws[k]; if (!c || c.t !== 'n') continue;
+    const a = X.utils.decode_cell(k);
+    if (a.r > fromRow && cols.has(a.c) && !fixes.has(k)) n++;
+  }
+  return n;
+}
+
 function sameDocGroups(spec, found, ref, get, mapCols, fieldNos) {
   if (spec.perRow || !spec.dupNo) return [];
   const docF = fieldNos.filter(n => spec.f[n].lvl === 'doc' && n !== 1);
@@ -1728,7 +1743,9 @@ function validateIkpu(X, ws, sheetName) {
     if (a) { const k = a.s.replace(/\s/g, ''); if (seen.has(k)) push('warn', r, 0, fA, 'Этот ИКПУ уже есть в строке ' + seen.get(k) + '.', a.raw); else seen.set(k, r + 1); }
   }
   if (!rows) issues.push({ tone: 'warn', row: hr + 2, where: '', msg: 'Под заголовком нет данных.' });
-  return { type: 'ikpu', name: 'Шаблон загрузки ИКПУ', sheet: sheetName, docs: rows, items: rows, rows, issues, dups: [], codes: 0, fixes };
+  const fixAt = new Set(fixes.map(f => f.addr));
+  return { type: 'ikpu', name: 'Шаблон загрузки ИКПУ', sheet: sheetName, docs: rows, items: rows, rows, issues, dups: [], codes: 0, fixes,
+    hdrRow: hr, dataCols: [0, 1], numCells: numericCells(X, ws, hr, new Set([0, 1]), fixAt) };
 }
 
 async function checkExcel(file) {
@@ -1786,7 +1803,7 @@ async function buildFixed(file, results) {
   sheetEls.forEach(sh => { const t = target[sh.getAttributeNS(RNS, 'id')]; if (t) sheetPath[sh.getAttribute('name')] = t.startsWith('/') ? t.slice(1) : 'xl/' + t; });
 
   // подсветка: копия стиля ячейки + светло-зелёная заливка + текстовый формат (@)
-  let styleFor = sIdx => sIdx, st = null;
+  let styleFor = sIdx => sIdx, textStyle = sIdx => sIdx, st = null;
   if (zip.file('xl/styles.xml')) {
     st = await read('xl/styles.xml');
     const fills = st.getElementsByTagNameNS(NS, 'fills')[0], xfs = st.getElementsByTagNameNS(NS, 'cellXfs')[0];
@@ -1804,13 +1821,27 @@ async function buildFixed(file, results) {
         xfs.append(x); const id = list().length - 1; xfs.setAttribute('count', id + 1);
         return (memo[sIdx] = id);
       };
+      // остальные ячейки с данными: тот же стиль, только формат «Текстовый», без подсветки
+      const memoT = {};
+      textStyle = sIdx => {
+        if (memoT[sIdx] != null) return memoT[sIdx];
+        const base = list()[sIdx] || list()[0];
+        if (base.getAttribute('numFmtId') === '49') return (memoT[sIdx] = sIdx);
+        const x = base.cloneNode(true);
+        x.setAttribute('numFmtId', '49'); x.setAttribute('applyNumberFormat', '1');
+        xfs.append(x); const id = list().length - 1; xfs.setAttribute('count', id + 1);
+        return (memoT[sIdx] = id);
+      };
     }
   }
+  const colNo = ref => { let n = 0; for (const ch of ref.match(/^[A-Z]+/)[0]) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  // число как текст: без хвостов двоичной арифметики (0.30000000000000004 → 0.3)
+  const numText = v => String(Number(Number(v).toPrecision(15)));
 
   const log = [];
   for (const res of results) {
     const path = sheetPath[res.sheet];
-    if (!res.fixes.length || !path || !zip.file(path)) continue;
+    if (!path || !zip.file(path)) continue;
     const doc = await read(path), cells = {};
     [...doc.getElementsByTagNameNS(NS, 'c')].forEach(c => cells[c.getAttribute('r')] = c);
     res.fixes.forEach(fx => {
@@ -1826,6 +1857,24 @@ async function buildFixed(file, results) {
       }
       log.push([res.sheet, fx.row, fx.where, fx.old, fx.val == null ? '(пусто)' : fx.val, fx.why]);
     });
+    const fixed = new Set(res.fixes.map(f => f.addr)), cols = new Set(res.dataCols);
+    let toText = 0;
+    for (const [ref, c] of Object.entries(cells)) {
+      if (fixed.has(ref) || +ref.match(/\d+$/)[0] <= res.hdrRow + 1 || !cols.has(colNo(ref))) continue;
+      const t = c.getAttribute('t'), v = c.getElementsByTagNameNS(NS, 'v')[0], f = c.getElementsByTagNameNS(NS, 'f')[0];
+      if (t === 'b' || t === 'e') continue;
+      c.setAttribute('s', textStyle(+(c.getAttribute('s') || 0)));
+      if ((t == null || t === 'n' || t === 'str') && v) {
+        // число (или результат формулы) записываем текстом: так Excel и Didox видят ровно это значение
+        const text = t === 'str' ? v.textContent : numText(v.textContent);
+        while (c.firstChild) c.removeChild(c.firstChild);
+        c.setAttribute('t', 'inlineStr');
+        const is = doc.createElementNS(NS, 'is'), tt = doc.createElementNS(NS, 't');
+        tt.setAttributeNS(XMLNS, 'xml:space', 'preserve'); tt.textContent = text; is.append(tt); c.append(is);
+        toText++;
+      } else if (f) c.removeChild(f);
+    }
+    if (toText) log.push([res.sheet, '', 'Все ячейки с данными', toText + ' чисел', 'текст', 'переведено в Текстовый формат по инструкции; у остальных ячеек тоже включён Текстовый формат']);
     write(path, doc);
   }
   if (st) write('xl/styles.xml', st);
@@ -1907,7 +1956,7 @@ function renderExcel(fname, results) {
     const dl = el('dl');
     (res.type === 'ikpu'
       ? [['Лист', res.sheet], ['Строк', res.rows], ['Ошибок', errs.length], ['Предупреждений', warns.length]]
-      : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]).concat([['Исправится сам', res.fixes.length]])
+      : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]).concat([['Исправится сам', res.fixes.length + (res.numCells || 0)]])
       .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
     box.append(dl); out.append(box);
     if (res.groups && res.groups.length) {
@@ -1944,19 +1993,20 @@ function renderExcel(fname, results) {
       report.push('', t + ':'); list.forEach(i => report.push('- Строка ' + i.row + (i.where ? ', ' + i.where : '') + ': ' + i.msg + (i.val != null && i.val !== '' ? ' [' + i.val + ']' : '')));
     });
   });
-  const totalFixes = results.reduce((a, r) => a + r.fixes.length, 0);
-  if (totalFixes) {
-    out.append(secH('Будет исправлено автоматически (' + totalFixes + ')'));
+  const totalFixes = results.reduce((a, r) => a + r.fixes.length, 0), totalNum = results.reduce((a, r) => a + (r.numCells || 0), 0);
+  if (totalFixes || totalNum) {
+    out.append(secH('Будет исправлено автоматически (' + (totalFixes + totalNum) + ')'));
     const g = group();
+    results.forEach(res => { if (res.numCells) g.append(issueRow('ok', 'Лист ' + res.sheet, 'Ячеек с числами: ' + res.numCells + '. В исправленной копии все ячейки с данными будут в Текстовом формате, как требует инструкция.')); });
     results.forEach(res => res.fixes.slice(0, LIMIT).forEach(f => g.append(issueRow('ok', 'Строка ' + f.row + ' · ' + f.where, f.why[0].toUpperCase() + f.why.slice(1) + '.', f.old, f))));
     if (totalFixes > LIMIT) g.append(el('div', 'more', 'и ещё — полный список будет на листе «Исправления»'));
     out.append(g);
     if (/\.xlsx$/i.test(fname)) {
       const btn = el('button', 'btn-fill accent', 'Скачать исправленный шаблон'); btn.onclick = () => downloadFixed(btn);
       out.insertBefore(btn, out.children[1] || null);
-      out.append(el('p', 'sec-f', 'В скачанной копии исправленные ячейки подсвечены зелёным, а на листе «Исправления» — что было и что стало. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
+      out.append(el('p', 'sec-f', 'В скачанной копии все ячейки с данными в Текстовом формате, исправленные значения подсвечены зелёным, а на листе «Исправления» — что было и что стало. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
     } else out.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
-    report.push('', 'Исправится автоматически: ' + totalFixes);
+    report.push('', 'Исправится автоматически: ' + totalFixes + (totalNum ? ', чисел в текст: ' + totalNum : ''));
   } else if (results.some(r => r.issues.length || r.dups.length)) {
     // объясняем, почему нет кнопки скачивания, — иначе её ищут
     const g = group(); g.style.marginTop = '16px';
