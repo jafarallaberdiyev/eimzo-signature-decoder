@@ -322,6 +322,22 @@ body.still .blob{animation-play-state:paused}
 
    <div class="cols">
    <div class="side">
+   <div class="sec-h">Просмотр документа Didox</div>
+   <div class="group">
+     <textarea id="viewIds" class="ids" spellcheck="false" aria-label="ID документов для просмотра" placeholder="ID документа или ссылка на него — можно несколько"></textarea>
+     <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="langLbl">Язык документа</span>
+       <span class="lang" role="radiogroup" aria-labelledby="langLbl"><button data-l="ru" role="radio" aria-checked="true">RU</button><button data-l="uz" role="radio" aria-checked="false">UZ</button></span></div>
+   </div>
+   <button class="btn-fill" id="viewGo">Показать документ</button>
+   <p class="sec-f">Документ открывается здесь же в том виде, как в Didox: можно распечатать или скачать. В Didox отправляется только ID.</p>
+
+   <div class="sec-h">Обновить статус документа в GoodSign</div>
+   <div class="group">
+     <textarea id="updIds" class="ids" spellcheck="false" aria-label="ID документов" placeholder="ID документа, по одному на строку"></textarea>
+   </div>
+   <button class="btn-fill" id="updGo">Обновить статус</button>
+   <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
+
    <div class="sec-h">Base64 из Payload запроса sign</div>
    <div class="group" id="dropzone">
      <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
@@ -334,22 +350,6 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="go">Расшифровать</button>
    <p class="sec-f">Можно с кавычками или целым JSON запроса. Расшифровка идёт на устройстве, данные никуда не отправляются.</p>
-
-   <div class="sec-h">Обновить статус документа в GoodSign</div>
-   <div class="group">
-     <textarea id="updIds" class="ids" spellcheck="false" aria-label="ID документов" placeholder="ID документа, по одному на строку"></textarea>
-   </div>
-   <button class="btn-fill" id="updGo">Обновить статус</button>
-   <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
-
-   <div class="sec-h">Просмотр документа Didox</div>
-   <div class="group">
-     <textarea id="viewIds" class="ids" spellcheck="false" aria-label="ID документов для просмотра" placeholder="ID документа или ссылка на него — можно несколько"></textarea>
-     <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="langLbl">Язык документа</span>
-       <span class="lang" role="radiogroup" aria-labelledby="langLbl"><button data-l="ru" role="radio" aria-checked="true">RU</button><button data-l="uz" role="radio" aria-checked="false">UZ</button></span></div>
-   </div>
-   <button class="btn-fill" id="viewGo">Показать документ</button>
-   <p class="sec-f">Документ открывается здесь же в том виде, как в Didox: можно распечатать или скачать. В Didox отправляется только ID.</p>
 
    <div class="sec-h">Проверка Excel-шаблона</div>
    <div class="group" id="xlsZone">
