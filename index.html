@@ -2212,7 +2212,6 @@ function runView() {
 }
 $('viewGo').onclick = runView;
 $('viewIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runView(); });
-$('viewIds').addEventListener('paste', () => setTimeout(() => { if (/[0-9a-f]{32}/i.test($('viewIds').value)) runView(); }, 0));
 // переключатели языка есть и слева, и в панели просмотра — держим их одинаковыми
 document.querySelectorAll('.lang button').forEach(b => b.onclick = () => {
   viewLang = b.dataset.l;
