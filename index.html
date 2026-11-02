@@ -1464,6 +1464,7 @@ function checkValue(f, i, prec, add) {
       break;
     case 'date':
       if (i.isDate) add('err', 'Дата в формате даты Excel — нужен Текстовый формат ячейки (ДД.ММ.ГГГГ).');
+      else if (i.num && Number.isInteger(i.v) && i.v >= 36526 && i.v <= 73050) add('err', 'Дата записана числом Excel (' + i.v + ') — нужен текст ДД.ММ.ГГГГ.');
       else if (!validDate(s)) add('err', 'Дата должна быть текстом ДД.ММ.ГГГГ, например 01.07.2025.');
       break;
     case 'pos': case 'num': case 'money': case 'coord': {
@@ -1520,7 +1521,8 @@ function fixValue(X, f, i, prec) {
   return null;
 }
 
-function validateSheet(X, ws, sheetName) {
+function validateSheet(X, ws, sheetName, opts) {
+  opts = opts || {};
   const ref = usedRange(X, ws);
   const found = findNumberRow(X, ws, ref);
   if (!found) return null;
@@ -1543,11 +1545,15 @@ function validateSheet(X, ws, sheetName) {
   let inherit = {};
   const mapCols = Object.keys(found.map).map(Number), fieldNos = Object.keys(spec.f).map(Number);
   const itemFields = fieldNos.filter(n => spec.f[n].lvl === 'item');
+  const groups = sameDocGroups(spec, found, ref, get, mapCols, fieldNos);
+  const joined = new Map();   // строка → первая строка группы, если группы объединяем
+  if (opts.merge) groups.forEach(g => g.rows.slice(1).forEach(r => joined.set(r, g.rows[0])));
   for (let r = found.r + 1; r <= ref.e.r; r++) {
     const filled = mapCols.some(n => get(r, n));
     if (!filled) continue;
     rows++;
-    const a = get(r, 1);
+    let a = get(r, 1);
+    if (joined.has(r)) { fix(r, 1, a, null, 'п.п. убран: строка — товар той же СФ, что и строка ' + (joined.get(r) + 1)); a = null; }
     let newDoc = spec.perRow || !!a;
     if (!spec.perRow && !a && docStartRow < 0) { push('err', r, 1, 'Первая строка с данными без п.п. документа — укажите номер в столбце A.'); newDoc = true; }
     if (newDoc) {
@@ -1566,6 +1572,7 @@ function validateSheet(X, ws, sheetName) {
       items++; pos++;
       const p = get(r, spec.item);
       if (!p) push('err', r, spec.item, 'Не указан п.п. товара.');
+      else if (p.s !== String(pos) && opts.merge && groups.some(g => g.rows[0] === docStartRow)) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри объединённой СФ');
       else if (p.s !== String(pos)) push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
     }
 
@@ -1586,8 +1593,8 @@ function validateSheet(X, ws, sheetName) {
         else if (req === 'w') push('warn', r, n, 'Поле не заполнено — обычно оно нужно.');
         continue;
       }
-      if (!atLevel && f.lvl !== 'item') continue;
-      checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
+      // поля документа в строках товаров не проверяем, но очевидные исправления (дата, пробелы) делаем и там
+      if (atLevel || f.lvl === 'item') checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
       if (own) { const fv = fixValue(X, f, i, spec.prec || 2); if (fv) fix(r, n, i, fv[0], fv[1]); }
     }
 
@@ -1676,7 +1683,25 @@ function validateSheet(X, ws, sheetName) {
   [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no)));
   if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
   issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
-  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max, fixes: [...fixes.values()] };
+  return { type, name: spec.name, sheet: sheetName, docs, items, rows, issues, dups, codes: codes.size, cols: found.max, fixes: [...fixes.values()], groups, merged: !!opts.merge };
+}
+
+// Подряд идущие строки с п.п. в столбце A, у которых совпадают номер документа и все заполненные поля документа
+// (даты, договор, ИНН сторон), — почти наверняка одна СФ с несколькими товарами: п.п. поставили в каждой строке.
+function sameDocGroups(spec, found, ref, get, mapCols, fieldNos) {
+  if (spec.perRow || !spec.dupNo) return [];
+  const docF = fieldNos.filter(n => spec.f[n].lvl === 'doc' && n !== 1);
+  const groups = []; let g = null;
+  for (let r = found.r + 1; r <= ref.e.r; r++) {
+    if (!mapCols.some(n => get(r, n))) continue;
+    if (!get(r, 1)) continue;                       // строка товара внутри уже начатого документа
+    const no = get(r, spec.dupNo);
+    const same = g && no && no.s === g.no && docF.every(n => { const x = get(r, n), y = get(g.rows[0], n); return !x || !y || x.s === y.s; });
+    if (same) g.rows.push(r);
+    else { if (g && g.rows.length > 1) groups.push(g); g = no ? { no: no.s, rows: [r] } : null; }
+  }
+  if (g && g.rows.length > 1) groups.push(g);
+  return groups;
 }
 
 // Шаблон для загрузки ИКПУ: A — ИКПУ код, B — тип происхождения товара, без строки с номерами столбцов
@@ -1717,8 +1742,16 @@ async function checkExcel(file) {
     results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
   } finally { window.bgHold(false); }
   if (!results.length) { showError('Не нашли шаблон в файле.', 'Ожидается строка с номерами столбцов 1, 2, 3… над данными, как в шаблонах Didox.'); return; }
-  lastExcel = { file, results };
+  lastExcel = { file, results, X, wb };
   renderExcel(file.name, results);
+}
+// перепроверка того же файла: объединить похожие строки в одну СФ или вернуть как было
+function recheckExcel(merge) {
+  const { X, wb, file } = lastExcel;
+  const results = wb.SheetNames.map(n => validateSheet(X, wb.Sheets[n], n, { merge }) || validateIkpu(X, wb.Sheets[n], n)).filter(Boolean);
+  lastExcel = { file, results, X, wb };
+  renderExcel(file.name, results);
+  toast(merge ? 'Строки объединены в одну СФ' : 'Объединение отменено');
 }
 
 /* ----- исправленная копия: правим ячейки прямо в XML, чтобы сохранить оформление шаблона ----- */
@@ -1784,10 +1817,14 @@ async function buildFixed(file, results) {
       const c = cells[fx.addr]; if (!c) return;
       const sIdx = +(c.getAttribute('s') || 0);
       while (c.firstChild) c.removeChild(c.firstChild);
-      c.setAttribute('t', 'inlineStr'); c.setAttribute('s', styleFor(sIdx));
-      const is = doc.createElementNS(NS, 'is'), t = doc.createElementNS(NS, 't');
-      t.setAttributeNS(XMLNS, 'xml:space', 'preserve'); t.textContent = fx.val; is.append(t); c.append(is);
-      log.push([res.sheet, fx.row, fx.where, fx.old, fx.val, fx.why]);
+      c.setAttribute('s', styleFor(sIdx));
+      if (fx.val == null) c.removeAttribute('t');
+      else {
+        c.setAttribute('t', 'inlineStr');
+        const is = doc.createElementNS(NS, 'is'), t = doc.createElementNS(NS, 't');
+        t.setAttributeNS(XMLNS, 'xml:space', 'preserve'); t.textContent = fx.val; is.append(t); c.append(is);
+      }
+      log.push([res.sheet, fx.row, fx.where, fx.old, fx.val == null ? '(пусто)' : fx.val, fx.why]);
     });
     write(path, doc);
   }
@@ -1854,7 +1891,7 @@ function issueRow(tone, where, msg, val, fx) {
   if (where) lbl.append(el('span', 'w', where));
   lbl.append(document.createTextNode(msg));
   if (val != null && val !== '') lbl.append(el('span', 'v', 'Значение: «' + (String(val).length > 120 ? String(val).slice(0, 120) + '…' : val) + '»'));
-  if (fx) lbl.append(el('span', 'v fixed', 'Исправится → «' + (fx.val.length > 120 ? fx.val.slice(0, 120) + '…' : fx.val) + '»'));
+  if (fx) lbl.append(el('span', 'v fixed', fx.val == null ? 'Исправится → ячейка станет пустой' : 'Исправится → «' + (fx.val.length > 120 ? fx.val.slice(0, 120) + '…' : fx.val) + '»'));
   c.append(sq, lbl); return c;
 }
 
@@ -1873,6 +1910,19 @@ function renderExcel(fname, results) {
       : [['Лист', res.sheet], ['Документов', res.docs], ['Позиций', res.items], ['Ошибок', errs.length + res.dups.length], ['Предупреждений', warns.length], ['Кодов маркировки', res.codes]]).concat([['Исправится сам', res.fixes.length]])
       .forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, String(v))); dl.append(d); });
     box.append(dl); out.append(box);
+    if (res.groups && res.groups.length) {
+      const n = res.groups.reduce((k, g) => k + g.rows.length, 0), g0 = res.groups[0];
+      const span = g => 'строки ' + (g.rows[0] + 1) + '–' + (g.rows[g.rows.length - 1] + 1);
+      out.append(secH(res.merged ? 'Строки объединены' : 'Похоже на одну СФ'));
+      const g = group();
+      g.append(iconRow(res.merged ? 'ok' : 'warn', res.merged ? 'ok' : 'warn', res.merged
+        ? 'В исправленном файле ' + (res.groups.length > 1 ? res.groups.length + ' групп строк станут отдельными СФ' : span(g0) + ' — одна СФ № ' + g0.no + ' с ' + g0.rows.length + ' товарами') + ': п.п. в столбце A останется только в первой строке, товары пронумерованы 1, 2, 3…'
+        : (res.groups.length > 1 ? 'Найдено ' + res.groups.length + ' групп строк' : span(g0) + ' (' + g0.rows.length + ' шт.)') + ' с одинаковым номером СФ, датами, договором и ИНН, но п.п. в столбце A стоит в каждой строке. Так загрузится ' + n + ' отдельных СФ. Если это одна СФ с несколькими товарами, п.п. ставится только в первой строке.'));
+      out.append(g);
+      const mb = el('button', 'btn-fill', res.merged ? 'Отменить объединение' : 'Объединить в одну СФ');
+      mb.onclick = () => recheckExcel(!res.merged); out.append(mb);
+      if (!res.merged) out.append(el('p', 'sec-f', 'Если это действительно разные СФ — дайте им разные номера в столбце D.'));
+    }
     report.push('', res.name + ' (лист ' + res.sheet + '): документов ' + res.docs + ', позиций ' + res.items + ', ошибок ' + (errs.length + res.dups.length) + ', предупреждений ' + warns.length);
 
     if (!errs.length && !warns.length && !res.dups.length) {
