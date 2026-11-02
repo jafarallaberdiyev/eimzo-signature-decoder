@@ -1496,6 +1496,8 @@ function fixValue(X, f, i, prec) {
   switch (f.t) {
     case 'date': {
       if (i.isDate) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата Excel переведена в текст ДД.ММ.ГГГГ']; }
+      // дата без формата даты — Excel хранит её числом дней (46323 = 28.10.2026); берём только 2000–2099 годы
+      if (i.num && Number.isInteger(i.v) && i.v >= 36526 && i.v <= 73050) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата записана числом Excel (' + i.v + ') — переведена в текст ДД.ММ.ГГГГ']; }
       if (!validDate(s)) {
         let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/), c = null;
         if (m) c = pad2(m[1]) + '.' + pad2(m[2]) + '.' + m[3];
@@ -1905,6 +1907,11 @@ function renderExcel(fname, results) {
       out.append(el('p', 'sec-f', 'В скачанной копии исправленные ячейки подсвечены зелёным, а на листе «Исправления» — что было и что стало. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
     } else out.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
     report.push('', 'Исправится автоматически: ' + totalFixes);
+  } else if (results.some(r => r.issues.length || r.dups.length)) {
+    // объясняем, почему нет кнопки скачивания, — иначе её ищут
+    const g = group(); g.style.marginTop = '16px';
+    g.append(iconRow('info', 'info', 'Кнопки «Скачать исправленный шаблон» нет: среди найденных ошибок нет таких, которые можно исправить автоматически без догадок. Их нужно поправить в файле вручную.'));
+    out.insertBefore(g, out.children[1] || null);
   }
   const bar = el('div', 'jbar'); const b = el('button', 'link', 'Копировать отчёт'); b.onclick = () => copyText(report.join('\n')); bar.append(b);
   out.append(bar);
