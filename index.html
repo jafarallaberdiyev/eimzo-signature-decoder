@@ -173,6 +173,15 @@ textarea::placeholder{color:var(--ter)}
 /* жёлтый — только для главного действия, как кнопка «Создать» в Didox */
 .btn-fill.accent{background:var(--yellow);color:var(--on-yellow)}
 textarea.ids{min-height:88px;max-height:30vh}
+/* Просмотр документа: язык, вкладки документов, сам документ */
+.lang{display:inline-flex;background:var(--fill);border-radius:8px;padding:2px;gap:2px}
+.lang button{border:0;background:transparent;color:var(--label);font:600 13px/1 var(--sans);padding:7px 12px;border-radius:6px;cursor:pointer}
+.lang button[aria-checked="true"]{background:var(--thumb);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.doc-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 16px 0}
+.doc-tabs button{border:0;background:var(--cell);color:var(--label);font:500 13px/1.2 var(--sans);padding:7px 12px;border-radius:16px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-tabs button[aria-selected="true"]{background:var(--tint-strong);color:var(--on-tint)}
+.docview{display:block;width:calc(100% - 32px);margin:8px 16px 0;min-height:240px;border:0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+@media (min-width:1000px){.docview{width:100%;margin-left:0;margin-right:0}.cols .doc-tabs{margin-left:0;margin-right:0}}
 .cell .lbl a{color:var(--link);text-decoration:none;white-space:nowrap}
 .cell .lbl .id{font:13px/1.35 var(--mono);overflow-wrap:anywhere}
 .iss .w{display:block;font-size:13px;color:var(--sec);margin-bottom:2px}
@@ -297,6 +306,15 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="updGo">Обновить статус</button>
    <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
+
+   <div class="sec-h">Просмотр документа Didox</div>
+   <div class="group">
+     <textarea id="viewIds" class="ids" spellcheck="false" aria-label="ID документов для просмотра" placeholder="ID документа или ссылка на него — можно несколько"></textarea>
+     <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="langLbl">Язык документа</span>
+       <span class="lang" role="radiogroup" aria-labelledby="langLbl"><button data-l="ru" role="radio" aria-checked="true">RU</button><button data-l="uz" role="radio" aria-checked="false">UZ</button></span></div>
+   </div>
+   <button class="btn-fill" id="viewGo">Показать документ</button>
+   <p class="sec-f">Документ открывается здесь же в том виде, как в Didox: можно распечатать или скачать. В Didox отправляется только ID.</p>
 
    <div class="sec-h">Проверка Excel-шаблона</div>
    <div class="group" id="xlsZone">
@@ -1124,7 +1142,7 @@ $('go').onclick = () => runText($('src').value);
 // Очистить всё: результат справа возвращается к подсказке, поля ввода пустеют
 const emptyOut = $('out').innerHTML;
 function clearAll() {
-  ['src', 'updIds', 'mkSrc'].forEach(id => $(id).value = '');
+  ['src', 'updIds', 'viewIds', 'mkSrc'].forEach(id => $(id).value = '');
   current = null; lastExcel = null;
   const out = $('out'); out.innerHTML = emptyOut; out.scrollTop = 0;
   toast('Очищено');
@@ -2041,6 +2059,93 @@ async function runUpdate() {
 }
 $('updGo').onclick = runUpdate;
 $('updIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runUpdate(); });
+
+/* ===== Просмотр документа Didox по ID ===== */
+const VIEW_URL = (id, lang) => 'https://api.didox.uz/v1/documents/' + id + '/html/' + lang;
+let viewLang = 'ru', viewCache = new Map(), viewAt = null;
+
+async function loadDoc(id, lang) {
+  const key = id + '/' + lang;
+  if (viewCache.has(key)) return viewCache.get(key);
+  let res;
+  try { res = await fetch(VIEW_URL(id, lang)); }
+  catch (e) { return { blocked: true }; }
+  if (!res.ok) return { msg: res.status === 422 || res.status === 404 ? 'Документ с таким ID не найден в Didox.' : 'Didox ответил ' + res.status + '.' };
+  const html = await res.text();
+  const title = (new DOMParser().parseFromString(html, 'text/html').title || '').trim() || 'Документ';
+  const r = { html, title };
+  viewCache.set(key, r);
+  return r;
+}
+
+// документ показывается в изолированной рамке: скрипты в нём не запускаются, ссылки открываются в новой вкладке
+function docFrame(html) {
+  const f = el('iframe', 'docview');
+  f.setAttribute('sandbox', 'allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox');
+  f.title = 'Документ';
+  f.srcdoc = html.replace(/<head([^>]*)>/i, '<head$1><base href="https://api.didox.uz/" target="_blank">');
+  const fit = () => { try { f.style.height = f.contentDocument.documentElement.scrollHeight + 4 + 'px'; } catch (e) {} };
+  f.onload = () => { fit(); setTimeout(fit, 300); };
+  return f;
+}
+
+async function showDoc(ids, i) {
+  const out = $('out'); out.textContent = ''; out.scrollTop = 0;
+  const id = ids[i]; viewAt = { ids, i };
+  if (ids.length > 1) {
+    const tabs = el('div', 'doc-tabs'); tabs.setAttribute('role', 'tablist');
+    ids.forEach((d, k) => {
+      const c = viewCache.get(d + '/' + viewLang);
+      const b = el('button', null, (k + 1) + '. ' + (c ? c.title : d.slice(0, 8) + '…'));
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(k === i)); b.title = d;
+      b.onclick = () => showDoc(ids, k); tabs.append(b);
+    });
+    out.append(tabs);
+  }
+  const wait = group(); wait.style.marginTop = '16px'; wait.append(iconRow('info', 'info', 'Загружаем документ ' + id + '…')); out.append(wait);
+  const r = await loadDoc(id, viewLang);
+  wait.remove();
+  if (!r.html) {
+    const g = group(); g.style.marginTop = '16px'; g.dataset.view = '1';
+    const c = updRow('err', id, r.blocked ? 'Браузер не пустил запрос к Didox.' : r.msg);
+    if (r.blocked) { const a = el('a', null, ' Открыть в новой вкладке'); a.href = VIEW_URL(id, viewLang); a.target = '_blank'; a.rel = 'noopener noreferrer'; c.querySelector('.lbl').append(a); }
+    g.append(c); out.append(g);
+    toast(r.blocked ? 'Не удалось загрузить' : 'Документ не найден');
+    return;
+  }
+  const box = el('div', 'hero appear'), head = el('div', 'kind'), badge = el('span', 'badge');
+  badge.innerHTML = svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>', 2);
+  head.append(badge, el('b', null, r.title)); box.append(head);
+  const dl = el('dl');
+  [['ID', id], ['Язык', viewLang === 'uz' ? 'Узбекский' : 'Русский']].forEach(([t, v]) => { const d = el('div'); d.append(el('dt', null, t), el('dd', null, v)); dl.append(d); });
+  box.append(dl); out.append(box);
+
+  const frame = docFrame(r.html);
+  const bar = el('div', 'jbar');
+  const pr = el('button', 'link', 'Печать'); pr.onclick = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { toast('Печать недоступна — откройте в новой вкладке'); } };
+  const dlb = el('button', 'link', 'Скачать HTML'); dlb.onclick = () => saveFile((r.title + ' ' + id).replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.html', new Blob([r.html], { type: 'text/html' }));
+  const op = el('button', 'link', 'Открыть в новой вкладке'); op.onclick = () => window.open(VIEW_URL(id, viewLang), '_blank', 'noopener');
+  const cp = el('button', 'link', 'Копировать ссылку'); cp.onclick = () => copyText(VIEW_URL(id, viewLang));
+  bar.append(pr, dlb, op, cp); out.append(bar, frame);
+  // подписи вкладок обновляются названиями загруженных документов
+  out.querySelectorAll('.doc-tabs button').forEach((b, k) => { const c = viewCache.get(ids[k] + '/' + viewLang); if (c) b.textContent = (k + 1) + '. ' + c.title; });
+  if (!matchMedia('(min-width:1000px)').matches) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function runView() {
+  const ids = [...new Set(($('viewIds').value.match(/[0-9a-f]{32}/gi) || []).map(x => x.toLowerCase()))];
+  if (!ids.length) { showError('Нет ID документа.', 'Вставьте ID — 32 символа из ссылки на документ в Didox — или саму ссылку.'); return; }
+  showDoc(ids, 0);
+}
+$('viewGo').onclick = runView;
+$('viewIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runView(); });
+$('viewIds').addEventListener('paste', () => setTimeout(() => { if (/[0-9a-f]{32}/i.test($('viewIds').value)) runView(); }, 0));
+document.querySelectorAll('.lang button').forEach(b => b.onclick = () => {
+  viewLang = b.dataset.l;
+  document.querySelectorAll('.lang button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+  // если сейчас открыт документ — показываем его же на другом языке
+  if (viewAt && $('out').querySelector('.docview, .doc-tabs, [data-view]')) showDoc(viewAt.ids, viewAt.i);
+});
 
 const DESIGNS = { classic: ['Классика', '%23FF453A', '%23D70015'], didox: ['Didox', '%237C6CFF', '%232F6BFF'], rain: ['Дождь', '%235E7A92', '%2322364A'], mono: ['Графит', '%238E8E93', '%232C2C2E'], clouds: ['Облака', '%2368B8D7', '%23183550'] };
 const icon = document.querySelector('link[rel="icon"]'), iconSrc = icon.href;
