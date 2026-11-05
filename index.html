@@ -239,7 +239,10 @@ textarea::placeholder{color:var(--ter)}
 .btn-fill.plain{background:var(--cell);color:var(--link)}
 .btn-fill[hidden]{display:none}
 /* результат проверки Excel: списки прокручиваются отдельно, высота — не больше экрана */
-.res-actions{position:sticky;top:0;z-index:5;padding:2px 0 6px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
+.res-actions{position:sticky;top:0;z-index:5;padding:0 0 4px;border-radius:0 0 18px 18px;transition:background .2s,box-shadow .2s}
+/* фон у панели появляется, только когда она прилипла к верху экрана */
+.res-actions.stuck{padding:2px 12px 8px;margin:0 -12px;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(14px);box-shadow:0 10px 24px -16px rgba(0,0,0,.35)}
+.res-actions .jbar{margin:8px 4px 0}
 .res-actions .btn-fill{margin-top:10px}
 .res-scroll{max-height:max(320px,calc(100vh - 190px));overflow:auto;overscroll-behavior:contain;margin-top:4px;padding-bottom:8px;scrollbar-width:none;border-radius:16px}
 .res-scroll::-webkit-scrollbar{display:none}
@@ -2144,6 +2147,8 @@ function renderExcel(fname, results) {
   out.querySelectorAll(':scope > .btn-fill.accent, :scope > .btn-fill.plain').forEach(x => actions.append(x));
   actions.append(bar);
   const top = out.querySelector(':scope > .hero'); top ? top.after(actions) : out.prepend(actions);
+  const mark = el('div'); actions.before(mark);   // метка над панелью: ушла за верх экрана — панель прилипла
+  new IntersectionObserver(([e]) => actions.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < 0)).observe(mark);
   scroller.append(el('p', 'sec-f', 'Проверяется заполнение по инструкции. Совпадение ИКПУ с единицей измерения, существование ИНН и ID районов проверяются только при загрузке в Didox.'));
   out.append(scroller);
   if (window.bgBurst) window.bgBurst();
