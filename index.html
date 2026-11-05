@@ -81,28 +81,28 @@ body{background:var(--bg)}
 .device{position:relative}
 .screen{position:relative;max-width:1280px;margin:0 auto;min-height:100%}
 body{overflow-x:hidden}
+html{scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
 .topbar{margin:0 calc(50% - 50vw)}
 .nav{max-width:1280px;margin:0 auto}
 @media (min-width:800px){.large{padding-top:8px}}
-/* Широкий экран: по центру, на всю высоту; слева ввод, справа результат со своей прокруткой */
+/* Широкий экран: по центру; слева ввод, справа результат; прокручивается вся страница целиком */
 .cols{display:block}
 @media (min-width:1000px){
-  .screen{display:flex;flex-direction:column;height:100vh;min-height:620px}
+  .screen{display:flex;flex-direction:column;min-height:100vh}
   .nav{padding:0 16px}
   .large{text-align:center;padding:0 24px}
   .cols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,440px) minmax(0,1fr);gap:24px;padding:0 24px 24px}
   .cols .group,.cols .hero,.cols .seg,.cols .search,.cols .json{margin-left:0;margin-right:0}
   .cols .btn-fill{width:100%;margin-left:0;margin-right:0}
   .cols .sec-h,.cols .sec-f{margin-left:16px;margin-right:16px}
-  .side{display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:none}
-  .side::-webkit-scrollbar{display:none}
+  .side{display:flex;flex-direction:column}
   .side>*{flex-shrink:0}
   #dropzone{flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
-  .side textarea{flex:1 1 auto;min-height:0;max-height:none;resize:none}
-  #out{min-height:0;overflow:auto;scrollbar-width:none;padding-bottom:8px}
-  #out::-webkit-scrollbar{display:none}
+  .side textarea{resize:none}
+  #out{padding-bottom:24px}
   #out>.sec-h:first-child,#out>.hero:first-child{margin-top:24px}
-  .empty{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
+  .empty{min-height:60vh;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
   .cols .empty>*{width:100%;max-width:560px;margin-left:auto;margin-right:auto}
   .cols .empty>.sec-h{padding:0 16px}
   .empty .ttl{font:600 22px/1.25 var(--sans);text-align:center;margin-bottom:4px}
@@ -2416,25 +2416,44 @@ function setDesign(d, quiet) {
 }
 document.querySelectorAll('.dz').forEach(b => b.addEventListener('click', () => setDesign(b.dataset.d)));
 setDesign(document.documentElement.dataset.design, true);
-/* ----- прокрутка колёсиком в любом месте страницы ----- */
-// На широком экране у левой колонки и у результата своя прокрутка, и колесо срабатывало только над ними.
-// Если под курсором нечему прокручиваться (заголовок, поля, фон), крутим ту колонку, что ближе к курсору.
-const wideScreen = matchMedia('(min-width:1000px)');
+/* ----- прокрутка колёсиком: двигается вся страница, плавно и с инерцией ----- */
+// Колесо задаёт цель, а страница мягко догоняет её (каждый кадр проходит 14% оставшегося пути).
+// Внутри полей и блоков со своей прокруткой колесо работает как обычно; на тачпадах и при «меньше движения» — тоже.
+const smooth = { to: 0, at: 0, raf: 0 };
+const fineWheel = matchMedia('(pointer: fine)'), lessMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const canScroll = (el, dy) => el.scrollHeight > el.clientHeight + 1 && (dy > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0);
+const maxScroll = () => document.documentElement.scrollHeight - innerHeight;
+function smoothStep() {
+  const d = smooth.to - smooth.at;
+  if (Math.abs(d) < .5) { smooth.at = smooth.to; scrollTo(0, smooth.at); smooth.raf = 0; return; }
+  smooth.at += d * .14; scrollTo(0, smooth.at);
+  smooth.raf = requestAnimationFrame(smoothStep);
+}
+function smoothTo(y) {
+  if (!smooth.raf) smooth.at = scrollY;
+  smooth.to = Math.max(0, Math.min(maxScroll(), y));
+  if (lessMotion.matches) { scrollTo(0, smooth.to); return; }
+  if (!smooth.raf) smooth.raf = requestAnimationFrame(smoothStep);
+}
+addEventListener('scroll', () => { if (!smooth.raf) smooth.at = smooth.to = scrollY; }, { passive: true });
 addEventListener('wheel', e => {
   const vw = document.getElementById('viewer');   // в полноэкранном просмотре документа прокрутка своя
-  if (!wideScreen.matches || e.ctrlKey || !e.deltaY || (vw && !vw.hidden)) return;
+  if (e.ctrlKey || !e.deltaY || !fineWheel.matches || lessMotion.matches || (vw && !vw.hidden)) return;
   for (let el = e.target; el && el !== document.body; el = el.parentElement) {
     const oy = getComputedStyle(el).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && canScroll(el, e.deltaY)) return;   // браузер прокрутит сам
+    if ((oy === 'auto' || oy === 'scroll') && canScroll(el, e.deltaY)) return;   // поле или блок прокрутит себя сам
   }
-  const side = document.querySelector('.side'), out = $('out'); if (!side || !out) return;
-  const r = side.getBoundingClientRect(), nearSide = e.clientX < r.right + 12;
-  const target = [nearSide ? side : out, nearSide ? out : side].find(el => canScroll(el, e.deltaY));
-  if (!target) return;
   e.preventDefault();
-  target.scrollBy({ top: e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY });
+  const step = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * innerHeight : e.deltaY;
+  smoothTo((smooth.raf ? smooth.to : scrollY) + step);
 }, { passive: false });
+// новый результат справа: если он выше экрана (прокрутили вниз к Excel или маркировке), плавно поднимаемся к нему
+const wideScreen = matchMedia('(min-width:1000px)');
+new MutationObserver(() => {
+  if (!wideScreen.matches || $('out').querySelector(':scope > .empty')) return;
+  const top = $('out').getBoundingClientRect().top;
+  if (top < 0) smoothTo(scrollY + top - 16);
+}).observe($('out'), { childList: true });
 
 $('motion').addEventListener('change', e => { window.bgPause(!e.target.checked); toast(e.target.checked ? 'Анимация включена' : 'Анимация выключена'); });
 </script>
