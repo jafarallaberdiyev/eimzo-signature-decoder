@@ -1419,6 +1419,48 @@ const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => String(a + i
 const PACKS = ['KIZ', 'NomUpak', 'IdentTransUpak'];
 // Код маркировки — от 18 до 63 символов (без скрытого разделителя GS), в одной СФ — не больше 5000 кодов
 const MK_LEN = [18, 63], MK_PER_DOC = 5000;
+// Разбор ячейки с кодами маркировки. Коды разделяют переносом строки или пробелом. В полном коде (GS1 DataMatrix)
+// после серийного номера идёт криптохвост 91…/92…, отделённый невидимым символом GS; при копировании GS часто
+// превращается в пробел — такие части приклеиваем к своему коду и отрезаем. Запятая и «;» бывают внутри серийного
+// номера, поэтому по ним коды не делим и символы внутри кода не меняем.
+// Вернёт [{ code, tail, junk, bad }]: code — код без криптохвоста; bad — 'excel' (Excel превратил код в число) или 'format'.
+const MK_GS1 = /^01\d{14}21/;
+// Коды часто приходят из CSV-выгрузки с разделителем «;»: если в серийном номере есть «;» или кавычка, часть кода
+// оказывается в кавычках, а кавычки внутри удвоены (…;"Xmuuc9wu""). Такую строку разбираем по правилам CSV и склеиваем обратно через «;».
+function mkCsvLine(line) {
+  const f = []; let cur = '', q = false;
+  for (let k = 0; k < line.length; k++) {
+    const ch = line[k];
+    if (q) { if (ch === '"') { if (line[k + 1] === '"') { cur += '"'; k++; } else q = false; } else cur += ch; }
+    else if (ch === '"' && cur === '') q = true;
+    else if (ch === ';') { f.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  f.push(cur);
+  while (f.length > 1 && f[f.length - 1] === '') f.pop();
+  return f.join(';');
+}
+function mkParse(raw) {
+  const out = [];
+  String(raw == null ? '' : raw).split(/\r\n|\r|\n/).forEach(line => {
+    let prev = null;
+    const csv = /(^|;)"/.test(line);
+    if (csv) line = mkCsvLine(line);
+    line.replace(/\x1d/g, ' ').split(/[ \t\u00a0]+/).forEach(t => {
+      if (!t || /^[;,"']+$/.test(t)) return;
+      if (prev && prev.tail < 3 && /^9[1-3]/.test(t) && !MK_GS1.test(t) && (MK_GS1.test(prev.code) || /^\d[\d,.]*(E[+-]?\d+)?;/i.test(prev.code))) { prev.tail++; return; }
+      const m = t.match(/;{2,}$/), it = { code: m ? t.slice(0, -m[0].length) : t, tail: 0, junk: !!m, csv };
+      if (!it.code) return;
+      out.push(prev = it);
+    });
+  });
+  const gs1 = out.filter(x => MK_GS1.test(x.code)).length;
+  out.forEach(x => {
+    if (/^\d[\d,.]*E[+-]?\d+/i.test(x.code)) x.bad = 'excel';
+    else if (gs1 * 2 > out.length && !MK_GS1.test(x.code)) x.bad = 'format';
+  });
+  return out;
+}
 const mkLen = c => c.replace(//g, '').length;
 
 // Поля по номеру столбца шаблона (строка с номерами 1, 2, 3…).
@@ -1680,6 +1722,7 @@ function checkValue(f, i, prec, add) {
     case 'pos': case 'num': case 'money': case 'coord': {
       const n = toNum(s);
       if (isNaN(n)) { add('err', 'Должно быть число.'); break; }
+      if (/\s/.test(s)) add('err', 'Пробел внутри числа — пишите без пробелов, например 23742.73, иначе Didox может не распознать значение.');
       if (f.t !== 'coord' && n < 0) add('err', 'Не может быть отрицательным.');
       if (f.t === 'pos' && n <= 0) add('err', 'Должно быть больше нуля.');
       if (f.t === 'money' && decimals(s) > prec) add('err', 'После запятой не больше ' + prec + ' знаков — округлите.');
@@ -1717,14 +1760,28 @@ function fixValue(X, f, i, prec) {
       }
       break;
     }
-    case 'money': { const n = toNum(s), k = 10 ** prec; if (!isNaN(n) && decimals(s) > prec) return [String(Math.round((n + Number.EPSILON) * k) / k), 'цена округлена до ' + prec + ' знаков']; break; }
+    case 'pos': case 'num': case 'money': {
+      let v = s.replace(/\s/g, ''); const why = [];
+      if (v !== s && !isNaN(toNum(v))) why.push('убраны пробелы внутри числа'); else v = s;
+      const n = toNum(v), k = 10 ** prec;
+      if (f.t === 'money' && !isNaN(n) && decimals(v) > prec) { v = String(Math.round((n + Number.EPSILON) * k) / k); why.push('цена округлена до ' + prec + ' знаков'); }
+      if (why.length) return [v, why.join(', ')];
+      break;
+    }
     case 'vat':
       if (/^\d+\s*%$/.test(s)) return [s.replace(/\s*%$/, ''), 'убран знак %'];
       if (/^без\s*ндс$/i.test(s) && s !== 'Без НДС') return ['Без НДС', 'ставка записана как «Без НДС»'];
       break;
     case 'codes': {
-      const v = [...new Set(i.raw.split(/[\s,;]+/).filter(Boolean))].join(' ');
-      return v !== i.raw ? [v, 'коды через один пробел, без повторов в ячейке'] : null;
+      const p = mkParse(i.raw), v = [...new Set(p.map(x => x.code))].join(' ');
+      if (v === i.raw) return null;
+      const why = ['коды через один пробел'], t = p.filter(x => x.tail).length, rep = p.length - new Set(p.map(x => x.code)).size;
+      if (t) why.push('убран криптохвост 91…/92… у ' + t + ' кодов');
+      if (p.some(x => x.junk)) why.push('убраны лишние «;;»');
+      const csvN = p.filter(x => x.csv && !x.bad).length;
+      if (csvN) why.push('у ' + csvN + ' кодов сняты кавычки CSV-выгрузки');
+      if (rep) why.push('убрано повторов в ячейке: ' + rep);
+      return [v, why.join(', ')];
     }
   }
   if (i.raw !== s) return [s, 'убраны пробелы в начале и конце'];
@@ -1753,6 +1810,7 @@ function validateSheet(X, ws, sheetName, opts) {
 
   let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [], docCodes = [];
   let inherit = {};
+  const rowSets = new Map(), noPack = [], docPacks = [];
   const mapCols = Object.keys(found.map).map(Number), fieldNos = Object.keys(spec.f).map(Number);
   const itemFields = fieldNos.filter(n => spec.f[n].lvl === 'item');
   const groups = sameDocGroups(spec, found, ref, get, mapCols, fieldNos);
@@ -1783,7 +1841,10 @@ function validateSheet(X, ws, sheetName, opts) {
       const p = get(r, spec.item);
       if (!p) push('err', r, spec.item, 'Не указан п.п. товара.');
       else if (p.s !== String(pos) && opts.merge && groups.some(g => g.rows[0] === docStartRow)) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри объединённой СФ');
-      else if (p.s !== String(pos)) push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
+      else if (p.s !== String(pos)) {
+        push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
+        if (!newDoc) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри СФ');
+      }
     }
 
     // поля
@@ -1862,19 +1923,36 @@ function validateSheet(X, ws, sheetName, opts) {
       const [mt, mp, mc] = spec.mark, T = get(r, mt), P = get(r, mp), C = get(r, mc);
       if (T || P || C) {
         if (!T) push('err', r, mt, 'Заполнена маркировка, но не указан тип товара (1–7).');
-        if (!P) push('err', r, mp, 'Заполнена маркировка, но не указан тип упаковки (KIZ, NomUpak, IdentTransUpak).');
+        if (!P) { push('err', r, mp, 'Заполнена маркировка, но не указан тип упаковки (KIZ, NomUpak, IdentTransUpak).'); if (C) noPack.push({ r, doc: docStartRow }); }
+        else if (PACKS.includes(P.s)) docPacks.push({ doc: docStartRow, v: P.s });
         if (!C) push('err', r, mc, 'Указан тип маркировки, но нет кодов.');
       }
       if (C) {
-        const list = C.raw.split(/[\s,;]+/).filter(Boolean);
-        if (/[,;]/.test(C.raw)) push('err', r, mc, 'Коды маркировок разделяются пробелом, а не запятой или точкой с запятой.');
+        const parsed = mkParse(C.raw), list = parsed.map(x => x.code);
+        const tails = parsed.filter(x => x.tail).length, junk = parsed.filter(x => x.junk).length;
+        if (tails) push('err', r, mc, 'У ' + tails + ' из ' + parsed.length + ' кодов есть криптохвост (91…/92…). Нужен код без него: 01 + GTIN + 21 + серийный номер. Пробел перед 91/92 разрезал бы каждый код на части.');
+        if (/[\r\n]/.test(C.raw)) push('err', r, mc, 'Коды разделены переносом строки — нужен один пробел между кодами.');
+        if (junk) push('err', r, mc, 'После ' + junk + ' кодов стоят лишние «;;» — это след выгрузки через CSV, их нужно убрать.');
+        const csvN = parsed.filter(x => x.csv && !x.bad).length;
+        if (csvN) push('err', r, mc, csvN + ' кодов испорчены выгрузкой через CSV: часть кода в кавычках, кавычки удвоены (…;"…""). Кавычки нужно снять — в исправленной копии это сделано по правилам CSV.');
         const seen = new Set();
-        list.forEach(code => {
+        parsed.forEach(({ code, bad }) => {
           if (seen.has(code)) push('err', r, mc, 'Код повторяется в этой же ячейке.', code); seen.add(code);
-          if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(code)) push('err', r, mc, 'В коде кириллица — похоже, код вводили не в той раскладке.', code);
+          if (bad === 'excel') push('err', r, mc, 'Код испорчен Excel: начало кода превращено в число вида 1,06972E+17, цифры потеряны. Восстановить его можно только из исходного файла или от поставщика.', code);
+          else if (bad === 'format') push('err', r, mc, 'Код не похож на остальные: он должен начинаться с 01 + 14 цифр GTIN + 21. Похоже, код испорчен — возьмите его из исходного файла.', code);
+          else if (/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(code)) push('err', r, mc, 'В коде кириллица — похоже, код вводили не в той раскладке.', code);
           else if (mkLen(code) < MK_LEN[0] || mkLen(code) > MK_LEN[1]) push('err', r, mc, 'Длина кода маркировки — от ' + MK_LEN[0] + ' до ' + MK_LEN[1] + ' символов, а здесь ' + mkLen(code) + '.', code);
           if (!codes.has(code)) codes.set(code, []); codes.get(code).push(r + 1);
         });
+        // у кодов одного товара длина обычно одинаковая; код другой длины — скорее всего потерял или получил лишний символ
+        const ok = parsed.filter(x => !x.bad), lens = new Map(); ok.forEach(x => lens.set(x.code.length, (lens.get(x.code.length) || 0) + 1));
+        const main = [...lens].sort((a, b) => b[1] - a[1])[0];
+        if (ok.length >= 10 && main && main[1] >= ok.length * 0.8) ok.filter(x => x.code.length !== main[0]).forEach(x =>
+          push('warn', r, mc, 'Длина кода ' + x.code.length + ' символов, а у остальных ' + main[1] + ' кодов этой строки — ' + main[0] + '. Похоже, в коде потерян или лишний символ — сверьте с исходным файлом.', x.code));
+        // одинаковый набор кодов в разных строках — коды скопировали в строку другого товара
+        const sig = [...seen].sort().join(' ');
+        if (seen.size > 1 && rowSets.has(sig)) push('err', r, mc, 'Все ' + seen.size + ' кодов этой строки повторяют коды строки ' + rowSets.get(sig) + ' — похоже, коды скопированы. Нужны коды именно этого товара.');
+        else if (seen.size > 1) rowSets.set(sig, r + 1);
         if (docCodes.length) docCodes[docCodes.length - 1].n += list.length;
         const q = get(r, spec.qty);
         if (P && P.s === 'KIZ' && q && !isNaN(toNum(q.s)) && toNum(q.s) !== list.length) push('warn', r, mc, 'Для KIZ число кодов обычно равно количеству: кодов ' + list.length + ', количество ' + q.s + '.');
@@ -1882,6 +1960,10 @@ function validateSheet(X, ws, sheetName, opts) {
     }
   }
 
+  noPack.forEach(({ r, doc }) => {
+    const vs = new Set(docPacks.filter(d => d.doc === doc).map(d => d.v));
+    if (vs.size === 1) fix(r, spec.mark[1], { raw: '' }, [...vs][0], 'тип упаковки — как у остальных товаров этой СФ');
+  });
   if (spec.mark) docCodes.filter(d => d.n > MK_PER_DOC).forEach(d => push('err', d.r, spec.mark[2], 'В одном документе можно указать не больше ' + MK_PER_DOC + ' кодов маркировки, а здесь ' + d.n + '. Разделите товары на несколько документов.'));
   // п.п. документов: все единицы или 1, 2, 3…
   if (docSeq.length > 1) {
@@ -1890,7 +1972,15 @@ function validateSheet(X, ws, sheetName, opts) {
   }
   // дубли между разными строками; повтор внутри одной ячейки отмечен отдельно и исправляется сам
   const dups = [...codes].filter(([, rs]) => new Set(rs).size > 1).map(([code, rs]) => ({ code, rows: [...new Set(rs)], n: new Set(rs).size }));
-  [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no)));
+  const docFields = fieldNos.filter(n => spec.f[n].lvl === 'doc' && n !== spec.dupNo && col(n) != null);
+  [...docNos].filter(([, rs]) => rs.length > 1).forEach(([no, rs]) => rs.slice(1).forEach(row => {
+    // тот же номер, но другие ИНН, даты или договор — данные СФ скопировали в строки товаров и где-то поменяли
+    const diff = docFields.filter(n => { const x = get(row - 1, n), y = get(rs[0] - 1, n); return x && y && x.s !== y.s; });
+    if (diff.length) push('err', row - 1, diff[0], 'Номер документа ' + no + ' тот же, что в строке ' + rs[0] + ', но отличается: ' +
+      diff.map(n => '«' + title(n) + '» (' + get(rs[0] - 1, n).s + ' → ' + get(row - 1, n).s + ')').join(', ') +
+      '. Если это одна СФ с несколькими товарами — данные СФ и п.п. в столбце A указывают только в первой строке, остальные строки оставляют пустыми. Если это разные СФ — дайте им разные номера.');
+    else push('warn', row - 1, spec.dupNo, 'Этот номер документа уже есть в строке ' + rs[0] + '. Если это один документ с несколькими товарами, п.п. в столбце A ставится только в первой строке.', no);
+  }));
   if (!rows) issues.push({ tone: 'warn', row: found.r + 2, where: '', msg: 'Под строкой с номерами столбцов нет данных.' });
   issues.sort((x, y) => x.row - y.row || (x.n || 0) - (y.n || 0));
   const dataCols = new Set(Object.values(found.map));
@@ -2053,8 +2143,20 @@ async function buildFixed(file, results) {
     if (!path || !zip.file(path)) continue;
     const doc = await read(path), cells = {};
     [...doc.getElementsByTagNameNS(NS, 'c')].forEach(c => cells[c.getAttribute('r')] = c);
+    const sheetData = doc.getElementsByTagNameNS(NS, 'sheetData')[0];
+    const cellAt = ref => {
+      if (cells[ref]) return cells[ref];
+      if (!sheetData) return null;
+      const rn = +ref.match(/\d+$/)[0], cn = colNo(ref);
+      const rows = [...sheetData.getElementsByTagNameNS(NS, 'row')];
+      let row = rows.find(x => +x.getAttribute('r') === rn);
+      if (!row) { row = doc.createElementNS(NS, 'row'); row.setAttribute('r', rn); sheetData.insertBefore(row, rows.find(x => +x.getAttribute('r') > rn) || null); }
+      const c = doc.createElementNS(NS, 'c'); c.setAttribute('r', ref);
+      row.insertBefore(c, [...row.getElementsByTagNameNS(NS, 'c')].find(x => colNo(x.getAttribute('r')) > cn) || null);
+      return (cells[ref] = c);
+    };
     res.fixes.forEach(fx => {
-      const c = cells[fx.addr]; if (!c) return;
+      const c = cellAt(fx.addr); if (!c) return;
       const sIdx = +(c.getAttribute('s') || 0);
       while (c.firstChild) c.removeChild(c.firstChild);
       c.setAttribute('s', styleFor(sIdx));
@@ -2261,8 +2363,8 @@ const mkLooksLikeCode = t => t.length >= MK_MIN && /^[\x1d\x21-\x7e]+$/.test(t);
 
 function mkFromText(text) {
   const items = [];
-  text.split(/\r?\n/).forEach((line, li) => line.split(/\s+/).forEach(t => {
-    t = t.replace(/^["']+|["']+$/g, '');
+  text.split(/\r?\n/).forEach((line, li) => mkParse(line).forEach(({ code }) => {
+    const t = code.replace(/^["']+|["']+$/g, '');
     if (t) items.push({ code: t, where: 'строка ' + (li + 1) });
   }));
   return { items, source: 'список' };
@@ -2274,7 +2376,7 @@ function mkFromSheets(X, wb) {
     for (const addr in ws) {
       if (addr[0] === '!') continue;
       const cell = ws[addr]; if (!cell || cell.v == null) continue;
-      String(cell.v).split(/\s+/).forEach(t => {
+      mkParse(cell.v).forEach(({ code: t }) => {
         if (!mkLooksLikeCode(t)) return;
         items.push({ code: t, where: pre + addr });
         cols.add(pre + addr.replace(/\d+$/, ''));
