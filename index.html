@@ -238,6 +238,11 @@ textarea::placeholder{color:var(--ter)}
 .btn-fill.accent{background:var(--yellow);color:var(--on-yellow)}
 .btn-fill.plain{background:var(--cell);color:var(--link)}
 .btn-fill[hidden]{display:none}
+/* результат проверки Excel: списки прокручиваются отдельно, высота — не больше экрана */
+.res-actions{position:sticky;top:0;z-index:5;padding:2px 0 6px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
+.res-actions .btn-fill{margin-top:10px}
+.res-scroll{max-height:max(320px,calc(100vh - 190px));overflow:auto;overscroll-behavior:contain;margin-top:4px;padding-bottom:8px;scrollbar-width:thin;border-top:1px solid var(--sep);border-bottom:1px solid var(--sep)}
+.res-scroll>.sec-h:first-child{margin-top:16px}
 textarea.ids{min-height:88px;max-height:30vh}
 /* Просмотр документа: язык, вкладки документов, сам документ */
 .lang{display:inline-flex;background:var(--fill);border-radius:8px;padding:2px;gap:2px}
@@ -2061,6 +2066,8 @@ function issueRow(tone, where, msg, val, fx) {
 function renderExcel(fname, results) {
   const out = $('out'); out.textContent = ''; out.scrollTop = 0;
   const LIMIT = 300; let report = ['Проверка: ' + fname];
+  // длинные списки ошибок и исправлений — в своей области прокрутки, карточка и кнопки остаются сверху
+  const scroller = el('div', 'res-scroll');
   results.forEach(res => {
     const errs = res.issues.filter(i => i.tone === 'err'), warns = res.issues.filter(i => i.tone === 'warn');
     const fxMap = new Map(res.fixes.map(f => [f.addr, f]));
@@ -2092,36 +2099,36 @@ function renderExcel(fname, results) {
       const g = group(); g.style.marginTop = '16px'; g.append(iconRow('ok', 'ok', 'Ошибок не найдено. Шаблон заполнен по инструкции.')); out.append(g);
     }
     if (res.dups.length) {
-      out.append(secH('Дубли кодов маркировки (' + res.dups.length + ')'));
+      scroller.append(secH('Дубли кодов маркировки (' + res.dups.length + ')'));
       const g = group(); res.dups.slice(0, LIMIT).forEach(d => g.append(issueRow('err', 'Строки ' + d.rows.join(', '), 'Код встречается ' + d.n + ' раза — каждый код маркировки должен быть уникальным.', d.code)));
       if (res.dups.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.dups.length - LIMIT)));
-      out.append(g);
+      scroller.append(g);
       report.push('', 'Дубли маркировки:'); res.dups.forEach(d => report.push('- ' + d.code + ' — строки ' + d.rows.join(', ')));
     }
     [['err', 'Ошибки', errs], ['warn', 'Предупреждения', warns]].forEach(([tone, t, list]) => {
       if (!list.length) return;
-      out.append(secH(t + ' (' + list.length + ')'));
+      scroller.append(secH(t + ' (' + list.length + ')'));
       const g = group(); list.slice(0, LIMIT).forEach(i => g.append(issueRow(tone, 'Строка ' + i.row + (i.where ? ' · ' + i.where : ''), i.msg, i.val, i.addr && fxMap.get(i.addr))));
       if (list.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (list.length - LIMIT) + ' — скопируйте отчёт целиком'));
-      out.append(g);
+      scroller.append(g);
       report.push('', t + ':'); list.forEach(i => report.push('- Строка ' + i.row + (i.where ? ', ' + i.where : '') + ': ' + i.msg + (i.val != null && i.val !== '' ? ' [' + i.val + ']' : '')));
     });
   });
   const totalFixes = results.reduce((a, r) => a + r.fixes.length, 0), totalNum = results.reduce((a, r) => a + (r.numCells || 0), 0);
   if (totalFixes) {
-    out.append(secH('Будет исправлено автоматически (' + totalFixes + ')'));
+    scroller.append(secH('Будет исправлено автоматически (' + totalFixes + ')'));
     const g = group();
     results.forEach(res => { if (res.numCells) g.append(issueRow('ok', 'Лист ' + res.sheet, 'Ещё ячеек с числами: ' + res.numCells + '. В исправленной копии все ячейки с данными будут в Текстовом формате, как требует инструкция.')); });
     results.forEach(res => res.fixes.slice(0, LIMIT).forEach(f => g.append(issueRow('ok', 'Строка ' + f.row + ' · ' + f.where, f.why[0].toUpperCase() + f.why.slice(1) + '.', f.old, f))));
     if (totalFixes > LIMIT) g.append(el('div', 'more', 'и ещё — полный список в отчёте об исправлениях'));
-    out.append(g);
+    scroller.append(g);
     if (/\.xlsx$/i.test(fname)) {
       const btn = el('button', 'btn-fill accent', 'Скачать исправленный шаблон');
       const rb = el('button', 'btn-fill plain', 'Скачать отчёт об исправлениях'); rb.onclick = () => downloadReport(rb); rb.hidden = true;
       btn.onclick = () => downloadFixed(btn, rb);
       out.insertBefore(btn, out.children[1] || null); btn.after(rb);
-      out.append(el('p', 'sec-f', 'В исправленном шаблоне все ячейки с данными в Текстовом формате, исправленные значения подсвечены зелёным. Что было и что стало — в отчёте об исправлениях: кнопка появится после скачивания шаблона. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
-    } else out.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
+      scroller.append(el('p', 'sec-f', 'В исправленном шаблоне все ячейки с данными в Текстовом формате, исправленные значения подсвечены зелёным. Что было и что стало — в отчёте об исправлениях: кнопка появится после скачивания шаблона. Оформление шаблона сохраняется, исходный файл не меняется. Остальные ошибки нужно исправить вручную.'));
+    } else scroller.append(el('p', 'sec-f', 'Исправленную копию можно собрать только из файла .xlsx — пересохраните шаблон в этом формате.'));
     report.push('', 'Исправится автоматически: ' + totalFixes + (totalNum ? ', чисел в текст: ' + totalNum : ''));
   } else if (results.some(r => r.issues.length || r.dups.length)) {
     // объясняем, почему нет кнопки скачивания, — иначе её ищут
@@ -2130,8 +2137,13 @@ function renderExcel(fname, results) {
     out.insertBefore(g, out.children[1] || null);
   }
   const bar = el('div', 'jbar'); const b = el('button', 'link', 'Копировать отчёт'); b.onclick = () => copyText(report.join('\n')); bar.append(b);
-  out.append(bar);
-  out.append(el('p', 'sec-f', 'Проверяется заполнение по инструкции. Совпадение ИКПУ с единицей измерения, существование ИНН и ID районов проверяются только при загрузке в Didox.'));
+  // кнопки скачивания и «Копировать отчёт» — в закреплённой панели: видны, пока листаете длинный список
+  const actions = el('div', 'res-actions');
+  out.querySelectorAll(':scope > .btn-fill.accent, :scope > .btn-fill.plain').forEach(x => actions.append(x));
+  actions.append(bar);
+  const top = out.querySelector(':scope > .hero'); top ? top.after(actions) : out.prepend(actions);
+  scroller.append(el('p', 'sec-f', 'Проверяется заполнение по инструкции. Совпадение ИКПУ с единицей измерения, существование ИНН и ID районов проверяются только при загрузке в Didox.'));
+  out.append(scroller);
   if (window.bgBurst) window.bgBurst();
   const total = results.reduce((a, r) => a + r.issues.filter(i => i.tone === 'err').length + r.dups.length, 0);
   toast(total ? 'Найдено ошибок: ' + total : 'Ошибок не найдено');
