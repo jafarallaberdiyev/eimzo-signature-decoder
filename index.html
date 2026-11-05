@@ -90,11 +90,16 @@ html::-webkit-scrollbar{display:none}
 .cols{display:block}
 @media (min-width:700px){
   .side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:0 16px;align-items:stretch}
-  .tool{display:flex;flex-direction:column;border:1px solid var(--sep);border-radius:18px;padding:2px 14px 16px;background:color-mix(in srgb,var(--cell) 55%,transparent);backdrop-filter:blur(6px)}
+  /* строки карточек одного ряда общие (subgrid): заголовки, поля, кнопки и подписи стоят на одной высоте */
+  .tool{display:grid;grid-template-rows:subgrid;grid-row:span 4;row-gap:0;align-content:start;border:1px solid var(--sep);border-radius:18px;padding:2px 14px 16px;background:color-mix(in srgb,var(--cell) 55%,transparent);backdrop-filter:blur(6px)}
   .tool .group,.tool .btn-fill{margin-left:0;margin-right:0;width:100%}
   .tool .sec-h{margin-left:2px;margin-right:2px;margin-top:16px}
   .tool .sec-f{margin-left:2px;margin-right:2px}
   .tool .designs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .tool>.group{display:flex;flex-direction:column}
+  .tool>.group>textarea{flex:1 1 auto}
+  .tool>.group:not(:has(textarea)){align-self:start}
+  .tool>.btn-fill{align-self:start}
   #out{margin-top:8px}
 }
 @media (min-width:700px) and (max-width:999px){.cols #out{padding:0 16px}}
@@ -437,6 +442,7 @@ body.still .blob{animation-play-state:paused}
      </label>
      <input type="file" id="xls" accept=".xlsx,.xls" hidden>
    </div>
+   <div class="tool-gap" aria-hidden="true"></div>
    <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ, загрузка ИКПУ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
    </section>
 
@@ -470,6 +476,7 @@ body.still .blob{animation-play-state:paused}
        <span class="lang" role="radiogroup" aria-labelledby="themeLbl"><button data-t="light" role="radio" aria-checked="true">Светлая</button><button data-t="dark" role="radio" aria-checked="false">Ночная</button></span></div>
      <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
    </div>
+   <div class="tool-gap" aria-hidden="true"></div>
    <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
    </section>
    </div>
