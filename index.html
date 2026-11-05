@@ -241,7 +241,9 @@ textarea::placeholder{color:var(--ter)}
 /* результат проверки Excel: списки прокручиваются отдельно, высота — не больше экрана */
 .res-actions{position:sticky;top:0;z-index:5;padding:2px 0 6px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
 .res-actions .btn-fill{margin-top:10px}
-.res-scroll{max-height:max(320px,calc(100vh - 190px));overflow:auto;overscroll-behavior:contain;margin-top:4px;padding-bottom:8px;scrollbar-width:thin;border-top:1px solid var(--sep);border-bottom:1px solid var(--sep)}
+.res-scroll{max-height:max(320px,calc(100vh - 190px));overflow:auto;overscroll-behavior:contain;margin-top:4px;padding-bottom:8px;scrollbar-width:none;border-radius:16px}
+.res-scroll::-webkit-scrollbar{display:none}
+.res-scroll .group{border-radius:16px}
 .res-scroll>.sec-h:first-child{margin-top:16px}
 textarea.ids{min-height:88px;max-height:30vh}
 /* Просмотр документа: язык, вкладки документов, сам документ */
