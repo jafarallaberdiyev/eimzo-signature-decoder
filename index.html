@@ -86,23 +86,32 @@ html::-webkit-scrollbar{display:none}
 .topbar{margin:0 calc(50% - 50vw)}
 .nav{max-width:1280px;margin:0 auto}
 @media (min-width:800px){.large{padding-top:8px}}
-/* Широкий экран: по центру; слева ввод, справа результат; прокручивается вся страница целиком */
+/* Широкий экран: инструменты — карточками по 3 в ряд (по 2 на среднем), результат — под ними на всю ширину; прокручивается вся страница */
 .cols{display:block}
+@media (min-width:700px){
+  .side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:0 16px;align-items:stretch}
+  .tool{display:flex;flex-direction:column;border:1px solid var(--sep);border-radius:18px;padding:2px 14px 16px;background:color-mix(in srgb,var(--cell) 55%,transparent);backdrop-filter:blur(6px)}
+  .tool .group,.tool .btn-fill{margin-left:0;margin-right:0;width:100%}
+  .tool .sec-h{margin-left:2px;margin-right:2px;margin-top:16px}
+  .tool .sec-f{margin-left:2px;margin-right:2px}
+  .tool .designs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #out{margin-top:8px}
+}
+@media (min-width:700px) and (max-width:999px){.cols #out{padding:0 16px}}
 @media (min-width:1000px){
   .screen{display:flex;flex-direction:column;min-height:100vh}
   .nav{padding:0 16px}
   .large{text-align:center;padding:0 24px}
-  .cols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(360px,440px) minmax(0,1fr);gap:24px;padding:0 24px 24px}
+  .cols{padding:0 24px 24px}
+  .side{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
   .cols .group,.cols .hero,.cols .seg,.cols .search,.cols .json{margin-left:0;margin-right:0}
   .cols .btn-fill{width:100%;margin-left:0;margin-right:0}
   .cols .sec-h,.cols .sec-f{margin-left:16px;margin-right:16px}
-  .side{display:flex;flex-direction:column}
-  .side>*{flex-shrink:0}
   #dropzone{flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
   .side textarea{resize:none}
   #out{padding-bottom:24px}
   #out>.sec-h:first-child,#out>.hero:first-child{margin-top:24px}
-  .empty{min-height:60vh;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
+  .empty{min-height:0;display:flex;flex-direction:column;justify-content:center;padding:24px 0}
   .cols .empty>*{width:100%;max-width:560px;margin-left:auto;margin-right:auto}
   .cols .empty>.sec-h{padding:0 16px}
   .empty .ttl{font:600 22px/1.25 var(--sans);text-align:center;margin-bottom:4px}
@@ -164,6 +173,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 :root[data-design="ramp"] .blob{display:none}
 :root[data-design="ramp"] canvas#bg{opacity:1}
 :root[data-design="ramp"] .group,:root[data-design="ramp"] .hero,:root[data-design="ramp"] .json{border:1px solid var(--sep);box-shadow:none}
+:root[data-design="ramp"] .tool{background:color-mix(in srgb,var(--cell) 70%,transparent)}
 :root[data-design="ramp"] .hero{border-radius:12px}
 :root[data-design="ramp"] .btn-fill{border-radius:10px;font-weight:600;letter-spacing:-.01em;background:var(--yellow);color:var(--on-yellow)}
 :root[data-design="ramp"] .btn-fill.accent{background:var(--label);color:var(--bg)}
@@ -172,7 +182,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 :root[data-design="ramp"] .dz[aria-checked="true"]{box-shadow:0 0 0 2px var(--label)}
 :root[data-design="ramp"] .btn-fill.plain{border:1px solid var(--label)}
 :root[data-design="ramp"] .sec-h{color:var(--label);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:12px}
-:root[data-design="ramp"] .side>.sec-h::before{background:var(--label);border-radius:2px}
+:root[data-design="ramp"] .tool>.sec-h::before{background:var(--label);border-radius:2px}
 :root[data-design="ramp"] .clear-all{border:1px solid var(--sep);box-shadow:none}
 .facts h2{font:600 clamp(26px,3.2vw,40px)/1.08 "Inter",var(--sans);letter-spacing:-.035em;margin:16px 0 8px;max-width:17em}
 .facts h2 mark{background:var(--yellow);color:var(--on-yellow);padding:0 .12em;border-radius:4px}
@@ -183,8 +193,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .facts dt{margin-top:6px;font-size:13px;color:var(--sec);line-height:1.3}
 @media (max-width:700px){.facts dl{grid-template-columns:repeat(2,minmax(0,1fr))}.facts dd{font-size:26px}}
 @media (min-width:1000px){.clear-all{top:8px;bottom:auto}.facts{padding-right:150px}}
-.side>.sec-h::before{content:"";display:inline-block;flex:none;width:6px;height:6px;border-radius:50%;background:var(--yellow);margin:0 8px 1px 0;vertical-align:middle}
-.side>.sec-h.row-h>span{flex:1}
+.tool>.sec-h::before{content:"";display:inline-block;flex:none;width:6px;height:6px;border-radius:50%;background:var(--yellow);margin:0 8px 1px 0;vertical-align:middle}
+.tool>.sec-h.row-h>span{flex:1}
 .large p{margin:4px 0 0;color:var(--sec);font-size:15px}
 
 /* ===== Сгруппированные списки ===== */
@@ -234,6 +244,9 @@ textarea.ids{min-height:88px;max-height:30vh}
 .vw-back{display:inline-flex;align-items:center;gap:2px;border:0;background:transparent;color:var(--link);font:600 17px/1 var(--sans);height:36px;padding:0 8px 0 2px;cursor:pointer;border-radius:9px}
 .vw-back svg{width:22px;height:22px}
 .vw-back:hover{background:var(--fill)}
+.vw-add{display:flex;gap:6px;flex:0 1 340px;min-width:0}
+.vw-add input{flex:1;min-width:0;height:36px;border:1px solid var(--sep);border-radius:9px;background:var(--bg);color:var(--label);padding:0 10px;font:12px/1 var(--mono)}
+.vw-add input:focus{outline:2px solid var(--tint);outline-offset:0}
 .vw-title{flex:1;min-width:120px;font:600 17px/1.2 var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vw-act{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .tb{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:0;border-radius:9px;background:var(--fill);color:var(--link);font:600 14px/1 var(--sans);cursor:pointer;white-space:nowrap}
@@ -242,11 +255,12 @@ textarea.ids{min-height:88px;max-height:30vh}
 .tb.main{background:var(--tint-strong);color:var(--on-tint)}
 .viewer .doc-tabs{margin:0;padding:8px 12px;background:var(--cell);border-bottom:.5px solid var(--sep)}
 .viewer .doc-tabs button{background:var(--fill)}
+.viewer .doc-tabs button[aria-selected="true"]{background:var(--tint-strong);color:var(--on-tint)}
 .vw-body{flex:1;min-height:0;position:relative;background:color-mix(in srgb,var(--label) 6%,var(--bg))}
 .vw-frame{display:block;width:100%;height:100%;border:0;background:#fff}
 .vw-msg{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--sec);font-size:16px}
 .vw-msg .group{width:min(520px,100%);text-align:left}
-@media (max-width:760px){.tb span{display:none}.tb{padding:0 10px}.vw-act{width:100%;justify-content:flex-end}.vw-act .lang{margin-right:auto}}
+@media (max-width:760px){.vw-add{order:5;flex:1 1 100%}.tb span{display:none}.tb{padding:0 10px}.vw-act{width:100%;justify-content:flex-end}.vw-act .lang{margin-right:auto}}
 .cell .lbl a{color:var(--link);text-decoration:none;white-space:nowrap}
 .cell .lbl .id{font:13px/1.35 var(--mono);overflow-wrap:anywhere}
 .iss .w{display:block;font-size:13px;color:var(--sec);margin-bottom:2px}
@@ -346,6 +360,7 @@ body.still .blob{animation-play-state:paused}
  <div class="vw-bar">
   <button class="vw-back" id="vwBack" title="Назад (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Назад</button>
   <div class="vw-title" id="vwTitle"></div>
+  <form class="vw-add" id="vwAdd" autocomplete="off"><input id="vwAddId" spellcheck="false" placeholder="Ещё документ: ID или ссылка" aria-label="Открыть ещё документ"><button class="tb" type="submit">Открыть</button></form>
   <div class="vw-act">
    <span class="lang" role="radiogroup" aria-label="Язык документа"><button data-l="ru" role="radio" aria-checked="true">RU</button><button data-l="uz" role="radio" aria-checked="false">UZ</button></span>
    <button class="tb main" id="vwPrint" title="Печать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg><span>Печать</span></button>
@@ -377,6 +392,7 @@ body.still .blob{animation-play-state:paused}
 
    <div class="cols">
    <div class="side">
+   <section class="tool">
    <div class="sec-h">Просмотр документа Didox</div>
    <div class="group">
      <textarea id="viewIds" class="ids" spellcheck="false" aria-label="ID документов для просмотра" placeholder="ID документа или ссылка на него — можно несколько"></textarea>
@@ -385,14 +401,18 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="viewGo">Показать документ</button>
    <p class="sec-f">Документ открывается здесь же в том виде, как в Didox: можно распечатать или скачать. В Didox отправляется только ID.</p>
+   </section>
 
+   <section class="tool">
    <div class="sec-h">Обновить статус документа в GoodSign</div>
    <div class="group">
      <textarea id="updIds" class="ids" spellcheck="false" aria-label="ID документов" placeholder="ID документа, по одному на строку"></textarea>
    </div>
    <button class="btn-fill" id="updGo">Обновить статус</button>
    <p class="sec-f">Статус в общем списке подтягивается заново. Сюда вставляются только ID — они отправляются в GoodSign.</p>
+   </section>
 
+   <section class="tool">
    <div class="sec-h">Base64 из Payload запроса sign</div>
    <div class="group" id="dropzone">
      <textarea id="src" spellcheck="false" aria-label="Подпись в base64" placeholder="Вставьте MIAGCSqGSIb3DQEHAqCA…"></textarea>
@@ -405,7 +425,9 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="go">Расшифровать</button>
    <p class="sec-f">Можно с кавычками или целым JSON запроса. Расшифровка идёт на устройстве, данные никуда не отправляются.</p>
+   </section>
 
+   <section class="tool">
    <div class="sec-h">Проверка Excel-шаблона</div>
    <div class="group" id="xlsZone">
      <label class="cell tap ico" for="xls">
@@ -416,7 +438,9 @@ body.still .blob{animation-play-state:paused}
      <input type="file" id="xls" accept=".xlsx,.xls" hidden>
    </div>
    <p class="sec-f">Счёт-фактура, ТТН, Гибридная ЭСФ, Произвольный документ, загрузка ИКПУ — тип определяется сам. Проверяются поля по инструкции и дубли кодов маркировки. Файл проверяется на устройстве и никуда не отправляется.</p>
+   </section>
 
+   <section class="tool">
    <div class="sec-h">Поиск дублей маркировки</div>
    <div class="group" id="mkZone">
      <textarea id="mkSrc" class="ids" spellcheck="false" aria-label="Коды маркировки" placeholder="Вставьте коды маркировки — по одному на строку или через пробел"></textarea>
@@ -429,7 +453,9 @@ body.still .blob{animation-play-state:paused}
    </div>
    <button class="btn-fill" id="mkGo">Найти дубли</button>
    <p class="sec-f">Ищет одинаковые коды по всему списку или по всем листам Excel и показывает, где каждый повтор. Коды проверяются на устройстве и никуда не отправляются.</p>
+   </section>
 
+   <section class="tool">
    <div class="sec-h">Оформление</div>
    <div class="group">
      <div class="designs" role="radiogroup" aria-label="Дизайн">
@@ -445,6 +471,7 @@ body.still .blob{animation-play-state:paused}
      <div class="cell" style="border-top:.5px solid var(--sep)"><span class="lbl" id="motionLbl">Анимация фона</span><span class="switch"><input type="checkbox" id="motion" checked aria-labelledby="motionLbl"><i></i></span></div>
    </div>
    <p class="sec-f">Подлинность подписи (криптография O‘z DSt 1092) здесь не проверяется — для этого нужен E-IMZO.</p>
+   </section>
    </div>
    <div id="out">
     <div class="empty">
@@ -2317,10 +2344,17 @@ function openViewer() {
   try { history.pushState({ docViewer: 1 }, ''); viewerPushed = true; } catch (e) { viewerPushed = false; }
   $('vwBack').focus();
 }
+// что открыто — в адресе страницы и в sessionStorage, чтобы после обновления открылся тот же документ
+const docHash = () => '#doc=' + viewAt.ids.join(',') + (viewAt.i ? '&i=' + viewAt.i : '') + (viewLang !== 'ru' ? '&lang=' + viewLang : '');
+function rememberDoc() {
+  try { history.replaceState({ docViewer: 1 }, '', location.pathname + location.search + docHash()); } catch (e) {}
+  try { sessionStorage.setItem('edo-open-doc', JSON.stringify({ ids: viewAt.ids, i: viewAt.i, lang: viewLang })); } catch (e) {}
+}
+function forgetDoc() { try { sessionStorage.removeItem('edo-open-doc'); } catch (e) {} }
 function closeViewer(fromHistory) {
   if (viewer.hidden) return;
   viewer.hidden = true; document.documentElement.style.overflow = '';
-  $('vwBody').textContent = '';
+  $('vwBody').textContent = ''; forgetDoc();
   if (viewerPushed && !fromHistory) { viewerPushed = false; try { history.back(); } catch (e) {} }
   viewerPushed = false;
   const again = $('out').querySelector('.reopen'); if (again) again.focus();
@@ -2359,7 +2393,7 @@ async function showDoc(ids, i) {
     return;
   }
 
-  openViewer();
+  openViewer(); rememberDoc();
   const tabs = $('vwTabs'); tabs.textContent = ''; tabs.hidden = ids.length < 2;
   ids.forEach((d, k) => {
     const b = el('button', null, tabLabel(d, k));
@@ -2394,6 +2428,29 @@ function runView() {
   showDoc(ids, 0);
 }
 $('viewGo').onclick = runView;
+// «Открыть» в окне просмотра: новые ID добавляются вкладками к уже открытым
+$('vwAdd').addEventListener('submit', e => {
+  e.preventDefault();
+  const add = ($('vwAddId').value.match(/[0-9a-f]{32}/gi) || []).map(x => x.toLowerCase());
+  if (!add.length) { toast('Нужен ID документа — 32 символа'); return; }
+  const ids = [...new Set([...(viewAt ? viewAt.ids : []), ...add])];
+  $('vwAddId').value = ''; $('viewIds').value = ids.join('\n');
+  showDoc(ids, ids.indexOf(add[0]));
+});
+// после обновления страницы открываем тот же документ: сначала из адреса, иначе из sessionStorage
+(function restoreDoc() {
+  let st = null;
+  const m = location.hash.match(/^#doc=([0-9a-f,]+)(?:&i=(\d+))?(?:&lang=(ru|uz))?/i);
+  if (m) st = { ids: m[1].split(',').filter(x => /^[0-9a-f]{32}$/i.test(x)).map(x => x.toLowerCase()), i: +(m[2] || 0), lang: m[3] || 'ru' };
+  else try { st = JSON.parse(sessionStorage.getItem('edo-open-doc') || 'null'); } catch (e) {}
+  if (!st || !st.ids || !st.ids.length) return;
+  // адрес без #doc — чтобы «Назад» из просмотра вёл на главную, а не снова в документ
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  viewLang = st.lang === 'uz' ? 'uz' : 'ru';
+  document.querySelectorAll('.lang button[data-l]').forEach(x => x.setAttribute('aria-checked', String(x.dataset.l === viewLang)));
+  $('viewIds').value = st.ids.join('\n');
+  showDoc(st.ids, Math.min(st.i || 0, st.ids.length - 1));
+})();
 $('viewIds').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runView(); });
 // переключатели языка есть и слева, и в панели просмотра — держим их одинаковыми
 document.querySelectorAll('.lang button[data-l]').forEach(b => b.onclick = () => {
@@ -2459,12 +2516,12 @@ addEventListener('wheel', e => {
   const step = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * innerHeight : e.deltaY;
   smoothTo((smooth.raf ? smooth.to : scrollY) + step);
 }, { passive: false });
-// новый результат справа: если он выше экрана (прокрутили вниз к Excel или маркировке), плавно поднимаемся к нему
+// новый результат под карточками: если его не видно, плавно едем к нему
 const wideScreen = matchMedia('(min-width:1000px)');
 new MutationObserver(() => {
   if (!wideScreen.matches || $('out').querySelector(':scope > .empty')) return;
   const top = $('out').getBoundingClientRect().top;
-  if (top < 0) smoothTo(scrollY + top - 16);
+  if (top < 0 || top > innerHeight * .6) smoothTo(scrollY + top - 16);
 }).observe($('out'), { childList: true });
 
 $('motion').addEventListener('change', e => { window.bgPause(!e.target.checked); toast(e.target.checked ? 'Анимация включена' : 'Анимация выключена'); });
