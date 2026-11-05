@@ -2408,6 +2408,26 @@ function setDesign(d, quiet) {
 }
 document.querySelectorAll('.dz').forEach(b => b.addEventListener('click', () => setDesign(b.dataset.d)));
 setDesign(document.documentElement.dataset.design, true);
+/* ----- прокрутка колёсиком в любом месте страницы ----- */
+// На широком экране у левой колонки и у результата своя прокрутка, и колесо срабатывало только над ними.
+// Если под курсором нечему прокручиваться (заголовок, поля, фон), крутим ту колонку, что ближе к курсору.
+const wideScreen = matchMedia('(min-width:1000px)');
+const canScroll = (el, dy) => el.scrollHeight > el.clientHeight + 1 && (dy > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0);
+addEventListener('wheel', e => {
+  const vw = document.getElementById('viewer');   // в полноэкранном просмотре документа прокрутка своя
+  if (!wideScreen.matches || e.ctrlKey || !e.deltaY || (vw && !vw.hidden)) return;
+  for (let el = e.target; el && el !== document.body; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && canScroll(el, e.deltaY)) return;   // браузер прокрутит сам
+  }
+  const side = document.querySelector('.side'), out = $('out'); if (!side || !out) return;
+  const r = side.getBoundingClientRect(), nearSide = e.clientX < r.right + 12;
+  const target = [nearSide ? side : out, nearSide ? out : side].find(el => canScroll(el, e.deltaY));
+  if (!target) return;
+  e.preventDefault();
+  target.scrollBy({ top: e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY });
+}, { passive: false });
+
 $('motion').addEventListener('change', e => { window.bgPause(!e.target.checked); toast(e.target.checked ? 'Анимация включена' : 'Анимация выключена'); });
 </script>
 </body>
