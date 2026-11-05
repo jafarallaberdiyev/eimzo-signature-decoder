@@ -56,6 +56,14 @@
   --cv-red:#0B0B0B; --cv-gray:#B4B3A9; --cv-ink:#0B0B0B; --cv-lime:#C8DA00; --cv-green:#5E8C1A;
   color-scheme:light;
 }
+/* ночная тема Ramp — включается выбором темы (data-theme="dark"), а не системной настройкой */
+:root[data-design="ramp"][data-theme="dark"]{
+  --bg:#0E0E0C; --cell:#181816; --label:#F4F2EC; --sec:#A3A29A; --ter:#6B6A64; --sep:rgba(244,242,236,.12); --fill:rgba(244,242,236,.07);
+  --thumb:#2E2E2A; --on-tint:#0B0B0B; --tint:#F4F2EC; --tint-strong:#F4F2EC; --link:#F4F2EC; --y-text:#E4F222;
+  --j-key:#E5E4DE; --j-str:#B5D86A; --j-num:#E4F222; --j-null:#6B6A64; --mark:#4A5200; --mark-ink:#FFFFFF;
+  --cv-gray:#3C3C37; --cv-ink:#F4F2EC; --cv-lime:#C8DA00; --cv-green:#8FC93A;
+  color-scheme:dark;
+}
 :root[data-design="rain"]{--bg:#E4EAF0; --tint:#3B6E8F; --tint-strong:#2C5873; --link:#2C5873; --mark:#D3E3EE; --cv-red:#3F7CA6; --cv-gray:#7A93A8}
 @media (prefers-color-scheme:dark){
   :root[data-design="rain"]:not([data-theme="light"]){--bg:#090E14; --tint:#5FA8D3; --tint-strong:#4A95C2; --link:#7DBBE0; --mark:#1E3A50; --cv-red:#7DBBE0; --cv-gray:#4F6577}
@@ -158,10 +166,10 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 :root[data-design="ramp"] .group,:root[data-design="ramp"] .hero,:root[data-design="ramp"] .json{border:1px solid var(--sep);box-shadow:none}
 :root[data-design="ramp"] .hero{border-radius:12px}
 :root[data-design="ramp"] .btn-fill{border-radius:10px;font-weight:600;letter-spacing:-.01em;background:var(--yellow);color:var(--on-yellow)}
-:root[data-design="ramp"] .btn-fill.accent{background:#0B0B0B;color:#FFFFFF}
+:root[data-design="ramp"] .btn-fill.accent{background:var(--label);color:var(--bg)}
 :root[data-design="ramp"] .btn-fill.plain{background:var(--cell);color:var(--label)}
 :root[data-design="ramp"] .switch input:checked+i{background:#5E8C1A}
-:root[data-design="ramp"] .dz[aria-checked="true"]{box-shadow:0 0 0 2px #0B0B0B}
+:root[data-design="ramp"] .dz[aria-checked="true"]{box-shadow:0 0 0 2px var(--label)}
 :root[data-design="ramp"] .btn-fill.plain{border:1px solid var(--label)}
 :root[data-design="ramp"] .sec-h{color:var(--label);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:12px}
 :root[data-design="ramp"] .side>.sec-h::before{background:var(--label);border-radius:2px}
