@@ -53,7 +53,7 @@
   --bg:#F4F2EC; --cell:#FFFFFF; --label:#0B0B0B; --sec:#5E5E58; --ter:#9A9A92; --sep:rgba(11,11,11,.10); --fill:rgba(11,11,11,.05);
   --thumb:#FFFFFF; --on-tint:#FFFFFF; --tint:#0B0B0B; --tint-strong:#0B0B0B; --link:#0B0B0B; --yellow:#E4F222; --on-yellow:#0B0B0B; --y-text:#0B0B0B;
   --j-key:#3A3A36; --j-str:#3F6B00; --j-num:#0B0B0B; --j-null:#9A9A92; --mark:#EEF57A; --mark-ink:#0B0B0B;
-  --cv-red:#0B0B0B; --cv-gray:#9A9A92; --cv-ink:#0B0B0B;
+  --cv-red:#0B0B0B; --cv-gray:#B4B3A9; --cv-ink:#0B0B0B; --cv-lime:#C8DA00; --cv-green:#5E8C1A;
   color-scheme:light;
 }
 :root[data-design="rain"]{--bg:#E4EAF0; --tint:#3B6E8F; --tint-strong:#2C5873; --link:#2C5873; --mark:#D3E3EE; --cv-red:#3F7CA6; --cv-gray:#7A93A8}
@@ -153,10 +153,15 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 /* Дизайн «Ramp»: чисто и конкретно — тонкие рамки вместо теней, плотный шрифт, цифры вместо общих слов */
 .facts{display:none}
 :root[data-design="ramp"] body{font-family:"Inter",var(--sans);letter-spacing:-.015em}
-:root[data-design="ramp"] .bg{display:none}
+:root[data-design="ramp"] .blob{display:none}
+:root[data-design="ramp"] canvas#bg{opacity:1}
 :root[data-design="ramp"] .group,:root[data-design="ramp"] .hero,:root[data-design="ramp"] .json{border:1px solid var(--sep);box-shadow:none}
 :root[data-design="ramp"] .hero{border-radius:12px}
-:root[data-design="ramp"] .btn-fill{border-radius:10px;font-weight:600;letter-spacing:-.01em}
+:root[data-design="ramp"] .btn-fill{border-radius:10px;font-weight:600;letter-spacing:-.01em;background:var(--yellow);color:var(--on-yellow)}
+:root[data-design="ramp"] .btn-fill.accent{background:#0B0B0B;color:#FFFFFF}
+:root[data-design="ramp"] .btn-fill.plain{background:var(--cell);color:var(--label)}
+:root[data-design="ramp"] .switch input:checked+i{background:#5E8C1A}
+:root[data-design="ramp"] .dz[aria-checked="true"]{box-shadow:0 0 0 2px #0B0B0B}
 :root[data-design="ramp"] .btn-fill.plain{border:1px solid var(--label)}
 :root[data-design="ramp"] .sec-h{color:var(--label);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:12px}
 :root[data-design="ramp"] .side>.sec-h::before{background:var(--label);border-radius:2px}
@@ -462,11 +467,11 @@ body.still .blob{animation-play-state:paused}
   let C = {};
   const LINK = 150;
   let hold = false;
-  const SCENES = { classic: 'net', didox: 'docs', rain: 'rain', mono: 'glyphs', clouds: 'clouds', ramp: 'none' };
+  const SCENES = { classic: 'net', didox: 'docs', rain: 'rain', mono: 'glyphs', clouds: 'clouds', ramp: 'dots' };
   let scene = 'net', drops = [], splashes = [], docs = [], flash = 0, nextFlash = 0;
   function colors() {
     const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
-    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), yellow: g('--yellow') };
+    C = { red: g('--cv-red'), gray: g('--cv-gray'), ink: g('--cv-ink'), yellow: g('--yellow'), lime: g('--cv-lime') || '#C8DA00', green: g('--cv-green') || '#5E8C1A' };
   }
   function mkGlyph(any) {
     return { x: Math.random() * W, y: any ? Math.random() * H : H + 20, v: 10 + Math.random() * 22, ch: CH[Math.random() * CH.length | 0], sz: 9 + Math.random() * 7, z: .3 + Math.random() * .7, sw: Math.random() * 6.28 };
@@ -512,6 +517,18 @@ body.still .blob{animation-play-state:paused}
       const f = flash > .7 ? 1 : flash > .5 ? .3 : flash;   // двойная вспышка, потом затухание
       ctx.globalAlpha = .1 * f; ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H);
       flash = Math.max(0, flash - dt * 1.6);
+    }
+  }
+  // «Ramp»: сетка мелких точек, по которой бегут волны; на гребне точки крупнее, салатовые и зелёные, у курсора — круги
+  function drawDots(now) {
+    const t = now / 1000 * (1 + burst * 2), step = 16;
+    for (let y = step / 2; y < H; y += step) for (let x = step / 2; x < W; x += step) {
+      let w = Math.sin(x * .011 + y * .005 - t * 1.1) * .55 + Math.sin(x * .004 - y * .012 + t * .7) * .45;
+      if (px > -900) { const d = Math.hypot(x - px, y - py); if (d < 170) w += (1 - d / 170) * Math.sin(d * .09 - t * 6) * .9; }
+      const k = Math.max(0, w), sz = 1.2 + k * 1.6;
+      ctx.globalAlpha = .35 + k * .55;
+      ctx.fillStyle = k > .8 ? C.green : k > .5 ? C.lime : C.gray;
+      ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
     }
   }
   // документы: всплывают снизу, покачиваются и по пути получают подпись — галочку в кружке
@@ -636,6 +653,7 @@ body.still .blob{animation-play-state:paused}
       });
     } else if (scene === 'rain') drawRain(dt, now);
     else if (scene === 'docs') drawDocs(dt);
+    else if (scene === 'dots') drawDots(now);
 
     // символы base64
     const boost = 1 + burst * 7; burst = Math.max(0, burst - dt * .9);
