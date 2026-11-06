@@ -2417,28 +2417,30 @@ function mkRender(res, label, cols) {
   if (!res.dups.length) { const g = group(); g.style.marginTop = '16px'; g.append(iconRow('ok', 'ok', 'Дублей нет — все ' + res.total + ' кодов уникальны.')); out.append(g); }
 
   const LIMIT = 300;
+  // длинные списки — в своей области прокрутки, карточка и кнопки остаются сверху
+  const scroller = el('div', 'res-scroll');
   if (res.dups.length) {
-    out.append(secH('Повторяющиеся коды (' + res.dups.length + ')'));
+    scroller.append(secH('Повторяющиеся коды (' + res.dups.length + ')'));
     const g = group();
     res.dups.slice(0, LIMIT).forEach(d => {
       const w = d.where.slice(0, 10).join(', ') + (d.where.length > 10 ? ' и ещё ' + (d.where.length - 10) : '');
       g.append(issueRow('err', 'Встречается ' + d.n + ' раз' + (d.n % 10 >= 2 && d.n % 10 <= 4 && (d.n % 100 < 12 || d.n % 100 > 14) ? 'а' : ''), w + (d.gs ? ' (часть со скрытым разделителем GS)' : ''), d.code));
     });
     if (res.dups.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.dups.length - LIMIT) + ' — скопируйте список дублей целиком'));
-    out.append(g);
+    scroller.append(g);
   }
   if (res.badLen.length) {
-    out.append(secH('Неверная длина кода (' + res.badLen.length + ')'));
+    scroller.append(secH('Неверная длина кода (' + res.badLen.length + ')'));
     const g = group();
     res.badLen.slice(0, LIMIT).forEach(it => g.append(issueRow('err', it.where, 'Длина кода маркировки — от ' + MK_LEN[0] + ' до ' + MK_LEN[1] + ' символов, а здесь ' + mkLen(it.code) + '.', it.code)));
     if (res.badLen.length > LIMIT) g.append(el('div', 'more', 'и ещё ' + (res.badLen.length - LIMIT)));
-    out.append(g);
+    scroller.append(g);
   }
   if (res.similar.length) {
-    out.append(secH('Похоже на один и тот же код (' + res.similar.length + ')'));
+    scroller.append(secH('Похоже на один и тот же код (' + res.similar.length + ')'));
     const g = group();
     res.similar.slice(0, LIMIT).forEach(s => g.append(issueRow('warn', s.where, 'Короткий код — начало длинного. Обычно это один код: с криптохвостом и без.', s.short + '  ⟶  ' + s.long)));
-    out.append(g);
+    scroller.append(g);
   }
 
   const bar = el('div', 'jbar');
@@ -2449,7 +2451,11 @@ function mkRender(res, label, cols) {
   }
   const b2 = el('button', 'link', 'Копировать без дублей'); b2.onclick = () => copyText(res.unique.join('\n')); bar.append(b2);
   const b3 = el('button', 'link', 'Скачать без дублей'); b3.onclick = () => saveFile('коды без дублей.txt', new Blob([res.unique.join('\r\n')], { type: 'text/plain' })); bar.append(b3);
-  out.append(bar);
+  const actions = el('div', 'res-actions'); actions.append(bar);
+  box.after(actions);
+  const mark = el('div'); actions.before(mark);   // метка над панелью: ушла за верх экрана — панель прилипла
+  new IntersectionObserver(([e]) => actions.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < 0)).observe(mark);
+  if (scroller.childElementCount) out.append(scroller);
   if (window.bgBurst) window.bgBurst();
   toast(res.dups.length ? 'Найдено дублей: ' + res.dups.length : 'Дублей нет');
   if (!matchMedia('(min-width:1000px)').matches) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
