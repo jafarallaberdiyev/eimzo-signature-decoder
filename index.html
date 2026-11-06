@@ -96,6 +96,9 @@ body{background:var(--bg)}
 body{overflow-x:hidden}
 html{scrollbar-width:none}
 html::-webkit-scrollbar{display:none}
+/* полосы прокрутки скрыты везде — в полях ввода, списках и блоках; колесо и тачпад прокручивают как обычно */
+*{scrollbar-width:none}
+*::-webkit-scrollbar{display:none}
 .topbar{margin:0 calc(50% - 50vw)}
 .nav{max-width:1280px;margin:0 auto}
 @media (min-width:800px){.large{padding-top:8px}}
