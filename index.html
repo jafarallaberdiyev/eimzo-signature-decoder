@@ -1447,7 +1447,9 @@ function mkParse(raw) {
   const out = [];
   String(raw == null ? '' : raw).split(/\r\n|\r|\n/).forEach(line => {
     let prev = null;
-    const csv = /(^|;)"/.test(line);
+    // признаки CSV-выгрузки: удвоенные кавычки или поле целиком в кавычках. Одиночная кавычка после «;» бывает
+    // частью настоящего кода (…;"z0) — такой код уже чистый, его не трогаем, иначе повторное исправление его испортит
+    const csv = /""/.test(line) || /(^|;)"[^"]*"(;|$)/.test(line);
     if (csv) line = mkCsvLine(line);
     line.replace(/\x1d/g, ' ').split(/[ \t\u00a0]+/).forEach(t => {
       if (!t || /^[;,"']+$/.test(t)) return;
