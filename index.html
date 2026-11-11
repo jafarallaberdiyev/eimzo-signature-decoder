@@ -1444,14 +1444,14 @@ function mkCsvLine(line) {
   return f.join(';');
 }
 function mkParse(raw) {
-  const out = [];
+  const out = []; let sep = 0;   // sep — сколько раз коды были разделены запятой или «;» вместо пробела
   String(raw == null ? '' : raw).split(/\r\n|\r|\n/).forEach(line => {
     let prev = null;
     // признаки CSV-выгрузки: удвоенные кавычки или поле целиком в кавычках. Одиночная кавычка после «;» бывает
     // частью настоящего кода (…;"z0) — такой код уже чистый, его не трогаем, иначе повторное исправление его испортит
     const csv = /""/.test(line) || /(^|;)"[^"]*"(;|$)/.test(line);
     if (csv) line = mkCsvLine(line);
-    line.replace(/\x1d/g, ' ').split(/[ \t\u00a0]+/).forEach(t => {
+    line.replace(/\x1d/g, ' ').replace(/[,;]+(?=01\d{14}21)/g, () => { sep++; return ' '; }).split(/[ \t\u00a0]+/).forEach(t => {
       if (!t || /^[;,"']+$/.test(t)) return;
       if (prev && prev.tail < 3 && /^9[1-3]/.test(t) && !MK_GS1.test(t) && (MK_GS1.test(prev.code) || /^\d[\d,.]*(E[+-]?\d+)?;/i.test(prev.code))) { prev.tail++; return; }
       const m = t.match(/;{2,}$/), it = { code: m ? t.slice(0, -m[0].length) : t, tail: 0, junk: !!m, csv };
@@ -1464,6 +1464,7 @@ function mkParse(raw) {
     if (/^\d[\d,.]*E[+-]?\d+/i.test(x.code)) x.bad = 'excel';
     else if (gs1 * 2 > out.length && !MK_GS1.test(x.code)) x.bad = 'format';
   });
+  out.sep = sep;
   return out;
 }
 const mkLen = c => c.replace(//g, '').length;
@@ -1721,7 +1722,7 @@ function checkValue(f, i, prec, add) {
       break;
     case 'date':
       if (i.isDate) add('err', 'Дата в формате даты Excel — нужен Текстовый формат ячейки (ДД.ММ.ГГГГ).');
-      else if (i.num && Number.isInteger(i.v) && i.v >= 36526 && i.v <= 73050) add('err', 'Дата записана числом Excel (' + i.v + ') — нужен текст ДД.ММ.ГГГГ.');
+      else if (i.num && i.v >= 36526 && i.v < 73051) add('err', 'Дата записана числом Excel (' + Math.floor(i.v) + ') — нужен текст ДД.ММ.ГГГГ.');
       else if (!validDate(s)) add('err', 'Дата должна быть текстом ДД.ММ.ГГГГ, например 01.07.2025.');
       break;
     case 'pos': case 'num': case 'money': case 'coord': {
@@ -1746,7 +1747,10 @@ function fixValue(X, f, i, prec) {
   const s = i.s;
   if (STRICT[f.t]) {
     let v = i.raw.replace(/[\s ]/g, ''), why = [];
-    if (v !== i.raw) why.push('убраны пробелы');
+    // пробелы внутри убираем, только если без них получается значение нужного вида; название вместо кода не склеиваем
+    const okKind = f.t === 'enum' ? f.e.some(x => x.toLowerCase() === v.toLowerCase()) : /^\d+$/.test(v);
+    if (!okKind) { v = s; if (v !== i.raw) why.push('убраны пробелы в начале и конце'); }
+    else if (v !== i.raw) why.push('убраны пробелы');
     if (f.t === 'ikpu' && i.num && /^\d{16}$/.test(v)) { v = '0' + v; why.push('возвращён ведущий 0'); }
     if (f.t === 'enum') { const m = f.e.find(x => x.toLowerCase() === v.toLowerCase()); if (m && m !== v) { v = m; why.push('написание как в инструкции'); } }
     if (i.num && /^\d+$/.test(v) && /^(inn|pinfl|ikpu)$/.test(f.t)) why.push('записано текстом');
@@ -1756,7 +1760,7 @@ function fixValue(X, f, i, prec) {
     case 'date': {
       if (i.isDate) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата Excel переведена в текст ДД.ММ.ГГГГ']; }
       // дата без формата даты — Excel хранит её числом дней (46323 = 28.10.2026); берём только 2000–2099 годы
-      if (i.num && Number.isInteger(i.v) && i.v >= 36526 && i.v <= 73050) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата записана числом Excel (' + i.v + ') — переведена в текст ДД.ММ.ГГГГ']; }
+      if (i.num && i.v >= 36526 && i.v < 73051) { const d = X.SSF.parse_date_code(i.v); if (d && d.y) return [pad2(d.d) + '.' + pad2(d.m) + '.' + d.y, 'дата записана числом Excel (' + Math.floor(i.v) + ') — переведена в текст ДД.ММ.ГГГГ']; }
       if (!validDate(s)) {
         let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/), c = null;
         if (m) c = pad2(m[1]) + '.' + pad2(m[2]) + '.' + m[3];
@@ -1775,6 +1779,9 @@ function fixValue(X, f, i, prec) {
     }
     case 'vat':
       if (/^\d+\s*%$/.test(s)) return [s.replace(/\s*%$/, ''), 'убран знак %'];
+      // ячейка с форматом «Процентный» показывает 12%, а хранит 0.12
+      if (i.num && i.v === 0.12) return ['12', 'ставка 12% записана числом 0.12 — заменена на 12'];
+      { const n = toNum(s); if ((n === 12 || n === 0) && s !== String(n)) return [String(n), 'ставка записана целым числом']; }
       // «QQS siz», «QQSsiz», «ҚҚС сиз» — то же «Без НДС» по-узбекски; в шаблоне нужно писать «Без НДС»
       if (/^(без\s*ндс|qqs\s*siz|ққс\s*сиз)$/i.test(s) && s !== 'Без НДС') return ['Без НДС', 'ставка записана как «Без НДС»'];
       break;
@@ -1784,6 +1791,7 @@ function fixValue(X, f, i, prec) {
       const why = ['коды через один пробел'], t = p.filter(x => x.tail).length, rep = p.length - new Set(p.map(x => x.code)).size;
       if (t) why.push('убран криптохвост 91…/92… у ' + t + ' кодов');
       if (p.some(x => x.junk)) why.push('убраны лишние «;;»');
+      if (p.sep) why.push('запятые и «;» между кодами заменены пробелом');
       const csvN = p.filter(x => x.csv && !x.bad).length;
       if (csvN) why.push('у ' + csvN + ' кодов сняты кавычки CSV-выгрузки');
       if (rep) why.push('убрано повторов в ячейке: ' + rep);
@@ -1807,7 +1815,9 @@ function validateSheet(X, ws, sheetName, opts) {
   const title = n => titles[n] != null ? titles[n] : (titles[n] = title0(n));
   const title0 = n => { const h = col(n) != null ? headerText(X, ws, found.r, col(n)).replace(/\s*\*\s*/g, '').trim() : ''; return (spec.f[n] && spec.f[n].n) || h || 'Столбец ' + n; };
   const starred = n => col(n) != null && /\*/.test(headerText(X, ws, found.r, col(n)));
-  const get = (r, n) => col(n) == null ? null : cellInfo(X, ws, r, col(n));
+  const getRaw = (r, n) => col(n) == null ? null : cellInfo(X, ws, r, col(n));
+  // ячейка из одних пробелов — пустая: иначе обязательное поле выглядит заполненным
+  const get = (r, n) => { const i = getRaw(r, n); return i && i.s === '' ? null : i; };
   const addr = (r, n) => col(n) == null ? null : X.utils.encode_cell({ r, c: col(n) });
   const push = (tone, r, n, msg, val) => issues.push({ tone, row: r + 1, n, addr: n ? addr(r, n) : null, where: n ? letter(n) + ' (' + n + ') · ' + title(n) : '', msg, val });
   const fixes = new Map();
@@ -1823,6 +1833,7 @@ function validateSheet(X, ws, sheetName, opts) {
   const joined = new Map();   // строка → первая строка группы, если группы объединяем
   if (opts.merge) groups.forEach(g => g.rows.slice(1).forEach(r => joined.set(r, g.rows[0])));
   for (let r = found.r + 1; r <= ref.e.r; r++) {
+    mapCols.forEach(n => { const i = getRaw(r, n); if (i && i.s === '') fix(r, n, i, null, 'ячейка из одних пробелов очищена'); });
     const filled = mapCols.some(n => get(r, n));
     if (!filled) continue;
     rows++;
@@ -1837,7 +1848,7 @@ function validateSheet(X, ws, sheetName, opts) {
     const newCargo = spec.cargo && (newDoc || !!get(r, spec.cargo));
     if (spec.cargo && newCargo) {
       const g = get(r, spec.cargo); cargo++;
-      if (!g) push('err', r, spec.cargo, 'Не указан п.п. груза в первой строке ТТН.');
+      if (!g) { push('err', r, spec.cargo, 'Не указан п.п. груза в первой строке ТТН.'); fix(r, spec.cargo, { raw: '' }, String(cargo), 'п.п. груза проставлен по порядку'); }
       else if (g.s !== String(cargo)) push('warn', r, spec.cargo, 'П.п. грузов идут по порядку 1, 2, 3… — ожидалось ' + cargo + '.', g.raw);
     }
     const ttnOnly = type === 'sf' && get(r, 71) && !itemFields.some(n => get(r, n));
@@ -1845,11 +1856,11 @@ function validateSheet(X, ws, sheetName, opts) {
     if (isItem) {
       items++; pos++;
       const p = get(r, spec.item);
-      if (!p) { push('err', r, spec.item, 'Не указан п.п. товара.'); fix(r, spec.item, { raw: '' }, String(pos), 'п.п. товара проставлен по порядку внутри СФ'); }
+      if (!p) { push('err', r, spec.item, 'Не указан п.п. товара.'); fix(r, spec.item, { raw: '' }, String(pos), 'п.п. товара проставлен по порядку внутри документа'); }
       else if (p.s !== String(pos) && opts.merge && groups.some(g => g.rows[0] === docStartRow)) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри объединённой СФ');
       else if (p.s !== String(pos)) {
         push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
-        if (!newDoc) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри СФ');
+        if (!newDoc) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри документа');
       }
     }
 
@@ -1914,8 +1925,12 @@ function validateSheet(X, ws, sheetName, opts) {
         // исправления сумм — по уже исправленным значениям
         const rateNow = cur(r, S.rate), vatI = get(r, S.vat), totI = get(r, S.total);
         if (vatI && /^(без ндс|ққссиз|0)$/i.test(rateNow) && toNum(vatI.s) !== 0) fix(r, S.vat, vatI, '0', 'сумма НДС = 0 при ставке «' + rateNow + '»');
-        const c2 = toNum(cur(r, S.cost)), v2 = toNum(cur(r, S.vat));
-        if (totI && !isNaN(c2) && !isNaN(v2) && Math.abs(toNum(totI.s) - c2 - v2) > 0.05) fix(r, S.total, totI, String(+(c2 + v2).toFixed(2)), 'пересчитано: стоимость поставки + НДС');
+        const c2 = toNum(cur(r, S.cost)), t0 = totI ? toNum(totI.s) : NaN; let v2 = toNum(cur(r, S.vat));
+        // ставка 12, сумма НДС не 12%, а «итого − стоимость» как раз 12% — ошибка в сумме НДС, итог не трогаем.
+        // Если не сходится ни то, ни другое — не угадываем, остаётся предупреждение
+        const vatOff = rateNow === '12' && !isNaN(c2) && !isNaN(v2) && Math.abs(v2 - c2 * 0.12) > 1;
+        if (vatOff && vatI && !isNaN(t0) && Math.abs(t0 - c2 * 1.12) <= 1) { v2 = +(t0 - c2).toFixed(2); fix(r, S.vat, vatI, String(v2), 'сумма НДС = стоимость с НДС − стоимость поставки (12%)'); }
+        else if (totI && !vatOff && !isNaN(c2) && !isNaN(v2) && Math.abs(t0 - c2 - v2) > 0.05) fix(r, S.total, totI, String(+(c2 + v2).toFixed(2)), 'пересчитано: стоимость поставки + НДС');
         if (!isNaN(cost) && !isNaN(vat) && !isNaN(tot) && Math.abs(tot - cost - vat) > 0.05) push('warn', r, S.total, 'Должно быть «Стоимость поставки + НДС» = ' + money(cost + vat) + '.', get(r, S.total).raw);
       }
     }
@@ -1936,6 +1951,8 @@ function validateSheet(X, ws, sheetName, opts) {
       if (C) {
         const parsed = mkParse(C.raw), list = parsed.map(x => x.code);
         const tails = parsed.filter(x => x.tail).length, junk = parsed.filter(x => x.junk).length;
+        if (C.raw.length >= 32767) push('err', r, mc, 'Ячейка заполнена до предела Excel (32 767 символов) — часть кодов обрезана. Разделите товар на несколько строк, чтобы в каждой ячейке было меньше кодов.');
+        if (parsed.sep) push('err', r, mc, 'Коды разделены запятой или точкой с запятой — нужен один пробел между кодами.');
         if (tails) push('err', r, mc, 'У ' + tails + ' из ' + parsed.length + ' кодов есть криптохвост (91…/92…). Нужен код без него: 01 + GTIN + 21 + серийный номер. Пробел перед 91/92 разрезал бы каждый код на части.');
         if (/[\r\n]/.test(C.raw)) push('err', r, mc, 'Коды разделены переносом строки — нужен один пробел между кодами.');
         if (junk) push('err', r, mc, 'После ' + junk + ' кодов стоят лишние «;;» — это след выгрузки через CSV, их нужно убрать.');
