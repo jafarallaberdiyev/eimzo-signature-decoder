@@ -1775,7 +1775,8 @@ function fixValue(X, f, i, prec) {
     }
     case 'vat':
       if (/^\d+\s*%$/.test(s)) return [s.replace(/\s*%$/, ''), 'убран знак %'];
-      if (/^без\s*ндс$/i.test(s) && s !== 'Без НДС') return ['Без НДС', 'ставка записана как «Без НДС»'];
+      // «QQS siz», «QQSsiz», «ҚҚС сиз» — то же «Без НДС» по-узбекски; в шаблоне нужно писать «Без НДС»
+      if (/^(без\s*ндс|qqs\s*siz|ққс\s*сиз)$/i.test(s) && s !== 'Без НДС') return ['Без НДС', 'ставка записана как «Без НДС»'];
       break;
     case 'codes': {
       const p = mkParse(i.raw), v = [...new Set(p.map(x => x.code))].join(' ');
@@ -1844,7 +1845,7 @@ function validateSheet(X, ws, sheetName, opts) {
     if (isItem) {
       items++; pos++;
       const p = get(r, spec.item);
-      if (!p) push('err', r, spec.item, 'Не указан п.п. товара.');
+      if (!p) { push('err', r, spec.item, 'Не указан п.п. товара.'); fix(r, spec.item, { raw: '' }, String(pos), 'п.п. товара проставлен по порядку внутри СФ'); }
       else if (p.s !== String(pos) && opts.merge && groups.some(g => g.rows[0] === docStartRow)) fix(r, spec.item, p, String(pos), 'п.п. товара пронумерован по порядку внутри объединённой СФ');
       else if (p.s !== String(pos)) {
         push('err', r, spec.item, 'П.п. товаров внутри документа — 1, 2, 3… Ожидалось ' + pos + '.', p.raw);
