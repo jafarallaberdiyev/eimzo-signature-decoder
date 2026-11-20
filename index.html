@@ -1571,9 +1571,9 @@ const SPECS = {
       65: F('Происхождение товара', 'item', 0, 'enum', range(1, 4)),
       66: F('Товар отпустил (ИНН/ПИНФЛ)', 'doc', 0, 'inn'),
       67: F('Общее расстояние', 'doc', 1, 'num'), 68: F('Стоимость доставки (в сумах)', 'doc', 1, 'num'),
-      69: F('Брутто', 'item', 1, 'num'), 70: F('Нетто', 'item', 1, 'num')
+      69: Object.assign(F('Брутто (всего)', 'doc', 1, 'num'), { dot: 1 }), 70: Object.assign(F('Нетто (всего)', 'doc', 1, 'num'), { dot: 1 })
     },
-    sums: { qty: 53, price: 54, excise: 56, cost: 57, rate: 58, vat: 59, total: 60 }, weight: [69, 70]
+    sums: { qty: 53, price: 54, excise: 56, cost: 57, rate: 58, vat: 59, total: 60 }, weight: [69, 70], weightDoc: true
   },
   free: {
     name: 'Произвольный документ', max: 12, perRow: true,
@@ -1729,6 +1729,9 @@ function checkValue(f, i, prec, add) {
       const n = toNum(s);
       if (isNaN(n)) { add('err', 'Должно быть число.'); break; }
       if (/\s/.test(s)) add('err', 'Пробел внутри числа — пишите без пробелов, например 23742.73, иначе Didox может не распознать значение.');
+      // гибридная ЭСФ с «0,0001» в брутто висит при загрузке без ошибки (сервер ждёт число, а получает строку)
+      if (/,/.test(s)) add(f.dot ? 'err' : 'warn', 'Десятичный разделитель — точка: ' + s.replace(/\s/g, '').replace(',', '.') + ', а не ' + s + '. ' +
+        (f.dot ? 'Число с запятой Didox не читает: загрузка зависает без ошибки.' : 'С запятой Didox может не прочитать число — в исправленной копии запятая заменена точкой.'));
       if (f.t !== 'coord' && n < 0) add('err', 'Не может быть отрицательным.');
       if (f.t === 'pos' && n <= 0) add('err', 'Должно быть больше нуля.');
       if (f.t === 'money' && decimals(s) > prec) add('err', 'После запятой не больше ' + prec + ' знаков — округлите.');
@@ -1769,9 +1772,10 @@ function fixValue(X, f, i, prec) {
       }
       break;
     }
-    case 'pos': case 'num': case 'money': {
+    case 'pos': case 'num': case 'money': case 'coord': {
       let v = s.replace(/\s/g, ''); const why = [];
       if (v !== s && !isNaN(toNum(v))) why.push('убраны пробелы внутри числа'); else v = s;
+      if (/^-?\d*,\d+$/.test(v)) { v = v.replace(',', '.'); why.push('запятая заменена точкой'); }
       const n = toNum(v), k = 10 ** prec;
       if (f.t === 'money' && !isNaN(n) && decimals(v) > prec) { v = String(Math.round((n + Number.EPSILON) * k) / k); why.push('цена округлена до ' + prec + ' знаков'); }
       if (why.length) return [v, why.join(', ')];
@@ -1882,6 +1886,11 @@ function validateSheet(X, ws, sheetName, opts) {
         continue;
       }
       // поля документа в строках товаров не проверяем, но очевидные исправления (дата, пробелы) делаем и там
+      if (own && f.lvl !== 'item' && !atLevel && /^[\s.,;:'"_-]+$/.test(i.raw)) {
+        push('warn', r, n, 'Случайный символ в поле документа в строке товара — его нужно убрать: поля документа заполняются только в первой строке.', i.raw);
+        fix(r, n, i, null, 'убран случайный символ');
+        continue;
+      }
       if (atLevel || f.lvl === 'item') checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
       if (own) { const fv = fixValue(X, f, i, spec.prec || 2); if (fv) fix(r, n, i, fv[0], fv[1]); }
     }
@@ -1934,7 +1943,7 @@ function validateSheet(X, ws, sheetName, opts) {
         if (!isNaN(cost) && !isNaN(vat) && !isNaN(tot) && Math.abs(tot - cost - vat) > 0.05) push('warn', r, S.total, 'Должно быть «Стоимость поставки + НДС» = ' + money(cost + vat) + '.', get(r, S.total).raw);
       }
     }
-    if (isItem && spec.weight) {
+    if (spec.weight && (spec.weightDoc ? newDoc : isItem)) {
       const b = get(r, spec.weight[0]), nt = get(r, spec.weight[1]);
       if (b && nt && toNum(nt.s) > toNum(b.s)) push('warn', r, spec.weight[1], 'Нетто больше брутто.', nt.raw);
     }
