@@ -1571,7 +1571,7 @@ const SPECS = {
       65: F('Происхождение товара', 'item', 0, 'enum', range(1, 4)),
       66: F('Товар отпустил (ИНН/ПИНФЛ)', 'doc', 0, 'inn'),
       67: F('Общее расстояние', 'doc', 1, 'num'), 68: F('Стоимость доставки (в сумах)', 'doc', 1, 'num'),
-      69: Object.assign(F('Брутто (всего)', 'doc', 1, 'num'), { dot: 1 }), 70: Object.assign(F('Нетто (всего)', 'doc', 1, 'num'), { dot: 1 })
+      69: F('Брутто (всего)', 'doc', 1, 'num'), 70: F('Нетто (всего)', 'doc', 1, 'num')
     },
     sums: { qty: 53, price: 54, excise: 56, cost: 57, rate: 58, vat: 59, total: 60 }, weight: [69, 70], weightDoc: true
   },
@@ -1729,9 +1729,6 @@ function checkValue(f, i, prec, add) {
       const n = toNum(s);
       if (isNaN(n)) { add('err', 'Должно быть число.'); break; }
       if (/\s/.test(s)) add('err', 'Пробел внутри числа — пишите без пробелов, например 23742.73, иначе Didox может не распознать значение.');
-      // гибридная ЭСФ с «0,0001» в брутто висит при загрузке без ошибки (сервер ждёт число, а получает строку)
-      if (/,/.test(s)) add(f.dot ? 'err' : 'warn', 'Десятичный разделитель — точка: ' + s.replace(/\s/g, '').replace(',', '.') + ', а не ' + s + '. ' +
-        (f.dot ? 'Число с запятой Didox не читает: загрузка зависает без ошибки.' : 'С запятой Didox может не прочитать число — в исправленной копии запятая заменена точкой.'));
       if (f.t !== 'coord' && n < 0) add('err', 'Не может быть отрицательным.');
       if (f.t === 'pos' && n <= 0) add('err', 'Должно быть больше нуля.');
       if (f.t === 'money' && decimals(s) > prec) add('err', 'После запятой не больше ' + prec + ' знаков — округлите.');
@@ -1775,6 +1772,7 @@ function fixValue(X, f, i, prec) {
     case 'pos': case 'num': case 'money': case 'coord': {
       let v = s.replace(/\s/g, ''); const why = [];
       if (v !== s && !isNaN(toNum(v))) why.push('убраны пробелы внутри числа'); else v = s;
+      // запятая и точка равноправны, но гибридная ЭСФ с «0,0001» в брутто пока висит при загрузке — в копии ставим точку
       if (/^-?\d*,\d+$/.test(v)) { v = v.replace(',', '.'); why.push('запятая заменена точкой'); }
       const n = toNum(v), k = 10 ** prec;
       if (f.t === 'money' && !isNaN(n) && decimals(v) > prec) { v = String(Math.round((n + Number.EPSILON) * k) / k); why.push('цена округлена до ' + prec + ' знаков'); }
