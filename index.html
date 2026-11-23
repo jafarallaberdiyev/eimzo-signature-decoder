@@ -1828,7 +1828,7 @@ function validateSheet(X, ws, sheetName, opts) {
 
   let docs = 0, items = 0, rows = 0, docIdx = 0, docStartRow = -1, pos = 0, cargo = 0, docSeq = [], docCodes = [];
   let inherit = {};
-  const rowSets = new Map(), noPack = [], docPacks = [];
+  const rowSets = new Map(), noPack = [], docPacks = [], docRep = new Map();
   const mapCols = Object.keys(found.map).map(Number), fieldNos = Object.keys(spec.f).map(Number);
   const itemFields = fieldNos.filter(n => spec.f[n].lvl === 'item');
   const groups = sameDocGroups(spec, found, ref, get, mapCols, fieldNos);
@@ -1878,7 +1878,8 @@ function validateSheet(X, ws, sheetName, opts) {
         if (!atLevel) continue;
         let req = f.req || (starred(n) ? 1 : 0);
         if (type === 'sf' && n === 28 && get(docStartRow, 3)) req = 0;              // односторонняя СФ
-        if (type === 'ttn' && (n === 5 || n === 6)) { const t = get(docStartRow, 2); if (t && t.s === '1') req = 0; }
+        // «Со склада на склад»: договор не заполняется, клиент и заказчик не нужны — Didox принимает ТТН без них
+        if (type === 'ttn' && [5, 6, 15, 19].includes(n)) { const t = get(docStartRow, 2); if (t && t.s === '1') req = 0; }
         if (req === 1) push('err', r, n, 'Обязательное поле не заполнено.');
         else if (req === 'w') push('warn', r, n, 'Поле не заполнено — обычно оно нужно.');
         continue;
@@ -1887,6 +1888,16 @@ function validateSheet(X, ws, sheetName, opts) {
       if (own && f.lvl !== 'item' && !atLevel && /^[\s.,;:'"_-]+$/.test(i.raw)) {
         push('warn', r, n, 'Случайный символ в поле документа в строке товара — его нужно убрать: поля документа заполняются только в первой строке.', i.raw);
         fix(r, n, i, null, 'убран случайный символ');
+        continue;
+      }
+      // ТТН: данные документа в строке без п.п. ТТН — Didox начинает с неё новую ТТН
+      if (type === 'ttn' && own && f.lvl === 'doc' && !newDoc && docStartRow >= 0) {
+        const first = get(docStartRow, n), fx0 = fixes.get(addr(docStartRow, n)), v0 = fx0 ? fx0.val : first && first.s;
+        if (v0 == null || v0 === '') { fix(docStartRow, n, { raw: '' }, i.s, 'перенесено из строки ' + (r + 1) + ' — данные ТТН указываются в первой строке'); fix(r, n, i, null, 'перенесено в первую строку ТТН (' + (docStartRow + 1) + ')'); }
+        else if (v0 === i.s) fix(r, n, i, null, n < 60 ? 'убран повтор данных ТТН — они указываются только в первой строке' : 'убран повтор: стоимость доставки указывается один раз, в первой строке ТТН');
+        else push('warn', r, n, 'Отличается от первой строки ТТН (' + v0 + '). Проверьте, какое значение верное, и уберите его из этой строки.', i.raw);
+        // стоимость доставки (60–62) повторяют в каждой строке — это не делит ТТН, просто указывается один раз
+        if (n < 60 && !docRep.has(r)) docRep.set(r, n);
         continue;
       }
       if (atLevel || f.lvl === 'item') checkValue(f, i, spec.prec || 2, (tone, msg) => push(tone, r, n, msg, i.raw));
@@ -1990,6 +2001,7 @@ function validateSheet(X, ws, sheetName, opts) {
     }
   }
 
+  docRep.forEach((n, r) => push('err', r, n, 'В строке без п.п. ТТН (столбец A) повторены данные ТТН — Didox начнёт с неё отдельную ТТН. Данные ТТН (тип перевозки, номер, дата, ИНН, водитель, автомобиль, расстояние) указываются только в первой строке; в строках грузов — только п.п. груза, адреса и товары.'));
   noPack.forEach(({ r, doc }) => {
     const vs = new Set(docPacks.filter(d => d.doc === doc).map(d => d.v));
     if (vs.size === 1) fix(r, spec.mark[1], { raw: '' }, [...vs][0], 'тип упаковки — как у остальных товаров этой СФ');
